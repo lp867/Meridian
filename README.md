@@ -2,7 +2,7 @@
 
 Reise-Tracker als Web-App: besuchte Länder, Städte, Trips und Flüge auf einer Karte. Läuft offline und lässt sich auf dem Handy installieren.
 
-**App öffnen:** https://lp867.github.io/Meridian_Webapp/
+**App öffnen:** https://lp867.github.io/Meridian/
 
 ## Funktionen
 
