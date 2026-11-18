@@ -1,0 +1,124 @@
+export interface Flight {
+  id: string;
+  createdAt?: string;
+  dep: string; // IATA
+  arr: string;
+  depName?: string;
+  arrName?: string;
+  depTs: number; // UTC, ms
+  arrTs: number;
+  aircraftCode?: string;
+  aircraftName?: string;
+  reg?: string;
+  airlineCode?: string;
+  airlineName?: string;
+  flightNumber?: string;
+  km?: number;
+  comments?: string;
+  seat?: string;
+  travelClass?: string;
+}
+
+export interface FvTrip {
+  id: string;
+  name: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;
+  description?: string;
+  purpose?: string;
+  costAmount?: string;
+  costCurrency?: string;
+}
+
+export interface AirportInfo {
+  name: string;
+  city: string; // Stadtname (Original)
+  cityNames?: string[]; // [de, en, fr, es]
+  cityId: number; // GeoNames-ID oder 0
+  country: string; // ISO-2
+  lat: number;
+  lon: number;
+  tz: string;
+}
+
+export interface CityVisit {
+  date?: string; // YYYY-MM-DD
+  tripId?: string;
+}
+
+export interface City {
+  id: number; // GeoNames-ID
+  name: string;
+  names?: string[]; // [de, en, fr, es]
+  cc: string;
+  lat: number;
+  lon: number;
+  pop: number;
+  capital: boolean;
+  visits: CityVisit[];
+  note?: string;
+  addedAt: number;
+}
+
+export type TravelMode = 'car' | 'train' | 'bus' | 'boat' | 'other';
+
+export interface ManualTrip {
+  id: string;
+  name: string;
+  start: string; // YYYY-MM-DD
+  end: string;
+  mode: TravelMode;
+  countries: string[];
+  note?: string;
+}
+
+export interface TripOverride {
+  name?: string;
+  note?: string;
+  extraCountries?: string[]; // auf dem Landweg durchquert
+  outboundMode?: TravelMode; // Hinreise ohne Flug
+  returnMode?: TravelMode; // Rückreise ohne Flug
+}
+
+export interface CountryMark {
+  status?: 'visited' | 'wish';
+  note?: string;
+}
+
+export interface Settings {
+  cityThreshold: number;
+  home: string;
+  layoverHours: number;
+  name?: string; // Anzeigename im Profil
+}
+
+export interface AppData {
+  version: 1;
+  flights: Flight[];
+  fvTrips: FvTrip[];
+  airports: Record<string, AirportInfo>;
+  countries: Record<string, CountryMark>;
+  cities: City[];
+  manualTrips: ManualTrip[];
+  tripOverrides: Record<string, TripOverride>;
+  tripSplits: string[]; // Flug-IDs, vor denen ein neuer Trip beginnt
+  tripJoins: string[]; // Flug-IDs, die mit dem vorherigen Trip verbunden werden
+  dismissedSuggestions: number[];
+  settings: Settings;
+  updatedAt: number;
+}
+
+/** Lokale Einstellungen, die nicht ins Backup gehören (Token!). */
+export interface Meta {
+  githubRepo: string;
+  githubToken: string;
+  githubPath: string;
+  autoBackup: boolean;
+  lastBackupAt: number;
+  lastBackupError: string;
+  lastExportAt: number;
+  backedUpVersion: number; // updatedAt der zuletzt gesicherten Daten
+  onboarded: boolean;
+  lang: 'de' | 'en' | 'fr' | 'es';
+  theme: 'system' | 'dark' | 'light';
+}

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="de-CH">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#08090c" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content="Länder, Städte, Trips und Flüge – deine Reisen auf einer Karte." />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="icons/icon-192.png" />
+    <title>Meridian</title>
+    <style>
+      html,
+      body {
+        background: #08090c;
+        margin: 0;
+      }
+      #splash {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #08090c;
+        z-index: 500;
+        transition: opacity 0.4s ease;
+        font-family: system-ui, sans-serif;
+      }
+      #splash.gone {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash svg {
+        animation: splash-pulse 1.4s ease-in-out infinite alternate;
+      }
+      @keyframes splash-pulse {
+        from {
+          opacity: 0.55;
+          transform: scale(0.96);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="splash" class="splash">
+      <svg width="72" height="72" viewBox="0 0 512 512" aria-label="Meridian">
+        <defs>
+          <linearGradient id="sg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#7cb6ff" />
+            <stop offset="1" stop-color="#2f7ff0" />
+          </linearGradient>
+        </defs>
+        <circle cx="256" cy="256" r="150" fill="none" stroke="url(#sg)" stroke-width="28" />
+        <ellipse cx="256" cy="256" rx="62" ry="150" fill="none" stroke="url(#sg)" stroke-width="22" />
+        <path d="M106 256h300" stroke="url(#sg)" stroke-width="22" stroke-linecap="round" />
+      </svg>
+    </div>
+    <div id="app"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

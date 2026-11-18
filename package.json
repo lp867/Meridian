@@ -1,0 +1,40 @@
+{
+  "name": "meridian",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "data": "node scripts/build-data.mjs",
+    "icons": "node scripts/build-icons.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "country-flag-emoji-polyfill": "^0.1.10",
+    "d3-geo": "^3.1.2",
+    "d3-interpolate": "^3.0.2",
+    "d3-selection": "^3.0.1",
+    "d3-zoom": "^3.0.1",
+    "idb-keyval": "^6.3.0",
+    "papaparse": "^5.7.1",
+    "preact": "^11.2.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.6",
+    "@types/d3-geo": "^3.1.1",
+    "@types/d3-selection": "^3.0.12",
+    "@types/d3-zoom": "^3.0.9",
+    "@types/papaparse": "^5.5.2",
+    "@types/topojson-client": "^3.1.5",
+    "sharp": "^0.35.5",
+    "topojson-client": "^3.1.0",
+    "topojson-simplify": "^3.0.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.8",
+    "vite-plugin-pwa": "^2.0.0",
+    "world-atlas": "^2.0.2",
+    "world-countries": "^5.1.0"
+  }
+}

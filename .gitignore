@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# Lokale Werkzeug-Einstellungen
+.claude/
+
+# Persönliche Unterlagen und Daten – nie veröffentlichen
+KONZEPT.md
+/*.csv
+/meridian-*.json

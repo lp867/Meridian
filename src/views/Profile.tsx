@@ -1,0 +1,473 @@
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { emptyData, replaceData, requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
+import { backupToGithub, githubConfigured, restoreFromGithub } from '../lib/github';
+import { backupJson, downloadFile, parseBackup, toCsv } from '../lib/importFv';
+import { cityName, useDerived } from '../lib/derive';
+import { countriesSorted, countryName } from '../lib/geo';
+import { flag, fmtAgo, fmtInt, normalize, todayYmd } from '../lib/format';
+import { LANGS, t, tn, tw, type Lang } from '../lib/i18n';
+import { Icon } from '../ui/Icon';
+import { AnimatedNumber, Chip, LargeTitle, NavBar, Row, SectionTitle, Segmented, Toggle, stagger } from '../ui/kit';
+import { confirmSheet, openSheet, SheetHeader, closeSheet } from '../ui/Sheet';
+import { toast } from '../ui/Toast';
+import { openDataCheck, openImport } from './Flights';
+import { useBackupWarning } from './shared';
+import type { AppData, Meta } from '../lib/types';
+
+const THRESHOLDS = [15000, 25000, 50000, 100000, 250000, 500000];
+const LAYOVERS = [6, 12, 24, 48];
+
+export function ProfileScreen() {
+  const data = useData();
+  const meta = useMeta();
+  const d = useDerived();
+  const warn = useBackupWarning();
+  const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState<'' | 'backup' | 'restore'>('');
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    navigator.storage?.persisted?.().then(setPersisted).catch(() => setPersisted(false));
+  }, []);
+
+  const setSetting = <K extends keyof AppData['settings']>(k: K, v: AppData['settings'][K]) =>
+    updateData((dd) => ({ ...dd, settings: { ...dd.settings, [k]: v } }));
+
+  const doBackup = async () => {
+    setBusy('backup');
+    try {
+      await backupToGithub();
+      toast(t('In GitHub gesichert'));
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const doRestore = async () => {
+    setBusy('restore');
+    try {
+      const backup = await restoreFromGithub();
+      setBusy('');
+      const ok = await confirmSheet({
+        title: t('Sicherung laden?'),
+        text: t('Die Sicherung enthält {f}, {c} und {m}. Die Daten auf diesem Gerät werden ersetzt.', {
+          f: tn(backup.flights.length, 'Flug', 'Flüge'),
+          c: tn(backup.cities.length, 'Stadt', 'Städte'),
+          m: tn(backup.manualTrips.length, 'Reise ohne Flug', 'Reisen ohne Flug'),
+        }),
+        ok: t('Laden'),
+        danger: true,
+      });
+      if (!ok) return;
+      replaceData(backup);
+      updateMeta({ backedUpVersion: 0 });
+      toast(t('Sicherung geladen'));
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const exportJson = () => {
+    downloadFile(`meridian-backup-${todayYmd()}.json`, backupJson(data));
+    updateMeta({ lastExportAt: Date.now() });
+    toast(t('Sicherung gespeichert'));
+  };
+
+  const importJson = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    try {
+      const backup = parseBackup(await file.text());
+      const ok = await confirmSheet({
+        title: t('Sicherung einspielen?'),
+        text: t('{f}, {c}. Die Daten auf diesem Gerät werden ersetzt.', {
+          f: tn(backup.flights.length, 'Flug', 'Flüge'),
+          c: tn(backup.cities.length, 'Stadt', 'Städte'),
+        }),
+        ok: t('Einspielen'),
+        danger: true,
+      });
+      if (!ok) return;
+      replaceData(backup);
+      toast(t('Sicherung eingespielt'));
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+  };
+
+  const exportCountries = () => {
+    const rows = [...d.countries.values()]
+      .filter((c) => c.visited || c.wish)
+      .map((c) => [c.code, countryName(c.code), c.visited ? 'visited' : 'wishlist', c.first ?? '', c.last ?? '', c.trips.length, c.cities.length, data.countries[c.code]?.note ?? '']);
+    downloadFile(`meridian-countries-${todayYmd()}.csv`, toCsv(['code', 'country', 'status', 'first_visit', 'last_visit', 'trips', 'cities', 'note'], rows), 'text/csv');
+  };
+  const exportCities = () => {
+    const rows = data.cities.map((c) => [c.id, cityName(c), c.cc, c.pop, c.capital ? 1 : 0, c.visits.map((v) => v.date ?? '').join(' '), c.note ?? '']);
+    downloadFile(`meridian-cities-${todayYmd()}.csv`, toCsv(['geonames_id', 'city', 'country', 'population', 'capital', 'visits', 'note'], rows), 'text/csv');
+  };
+
+  const wipe = async () => {
+    const ok = await confirmSheet({
+      title: t('Alle Daten löschen?'),
+      text: t('Flüge, Länder, Städte und Reisen auf diesem Gerät werden gelöscht. Die GitHub-Sicherung bleibt bestehen.'),
+      ok: t('Alles löschen'),
+      danger: true,
+    });
+    if (!ok) return;
+    replaceData({ ...emptyData(), settings: data.settings });
+    toast(t('Daten gelöscht'));
+  };
+
+  const name = data.settings.name?.trim();
+  const stats = [
+    { v: d.visitedCount, l: tw(d.visitedCount, 'Land', 'Länder') },
+    { v: data.cities.length, l: tw(data.cities.length, 'Stadt', 'Städte') },
+    { v: d.trips.length, l: tw(d.trips.length, 'Trip', 'Trips') },
+    { v: data.flights.length, l: tw(data.flights.length, 'Flug', 'Flüge') },
+  ];
+
+  return (
+    <>
+      <NavBar title={t('Profil')} />
+      <LargeTitle>{t('Profil')}</LargeTitle>
+
+      <button class="card press profile-head" style={{ '--press': '1.015' }} onClick={() => openSheet(() => <NameSheet />)}>
+        <div class="avatar">{name ? name.slice(0, 1).toUpperCase() : flag(data.settings.home)}</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div class="pname">{name || t('Name hinzufügen')}</div>
+          <div class="psub">
+            {flag(data.settings.home)} {countryName(data.settings.home)}
+          </div>
+        </div>
+        <Icon name="pencil" size={18} />
+      </button>
+      <div class="profile-stats stagger">
+        {stats.map((s, i) => (
+          <div class="stat" style={stagger(i)}>
+            <div class="v">
+              <AnimatedNumber value={s.v} />
+            </div>
+            <div class="l">{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      <SectionTitle>{t('Darstellung')}</SectionTitle>
+      <div style={{ margin: '0 16px' }}>
+        <Segmented
+          value={meta.theme}
+          onChange={(v: Meta['theme']) => updateMeta({ theme: v })}
+          options={[
+            {
+              value: 'system',
+              label: (
+                <span class="seg-ico">
+                  <Icon name="monitor" size={16} /> {t('System')}
+                </span>
+              ),
+            },
+            {
+              value: 'light',
+              label: (
+                <span class="seg-ico">
+                  <Icon name="sun" size={16} /> {t('Hell')}
+                </span>
+              ),
+            },
+            {
+              value: 'dark',
+              label: (
+                <span class="seg-ico">
+                  <Icon name="moon" size={16} /> {t('Dunkel')}
+                </span>
+              ),
+            },
+          ]}
+        />
+      </div>
+
+      <SectionTitle>{t('Sprache')}</SectionTitle>
+      <div class="list">
+        {LANGS.map((l) => (
+          <Row
+            lead={flag(l.cc)}
+            leadClass="flag"
+            title={l.name}
+            trail={
+              <span class={`check ${meta.lang === l.code ? 'on' : ''}`}>
+                <Icon name="check" stroke={3} />
+              </span>
+            }
+            onClick={() => updateMeta({ lang: l.code as Lang })}
+          />
+        ))}
+      </div>
+
+      <SectionTitle>{t('Reisen')}</SectionTitle>
+      <div class="list">
+        <Row
+          lead={flag(data.settings.home)}
+          leadClass="flag"
+          title={t('Heimatland')}
+          sub={t('Trips beginnen und enden hier')}
+          trail={countryName(data.settings.home)}
+          chevron
+          onClick={() => openSheet(() => <HomePicker />, { tall: true })}
+        />
+      </div>
+      <SectionTitle>{t('Städte zählen ab')}</SectionTitle>
+      <div class="chips" style={{ flexWrap: 'wrap' }}>
+        {THRESHOLDS.map((v) => (
+          <Chip on={data.settings.cityThreshold === v} onClick={() => setSetting('cityThreshold', v)}>
+            {tn(v, 'Einwohner', 'Einwohner')}
+          </Chip>
+        ))}
+      </div>
+      <p class="hint">{t('Hauptstädte zählen immer. Bereits erfasste Städte bleiben erhalten.')}</p>
+      <SectionTitle>{t('Umstieg statt Ziel, wenn kürzer als')}</SectionTitle>
+      <div class="chips">
+        {LAYOVERS.map((h) => (
+          <Chip on={data.settings.layoverHours === h} onClick={() => setSetting('layoverHours', h)}>
+            {tn(h, 'Stunde', 'Stunden')}
+          </Chip>
+        ))}
+      </div>
+      <p class="hint">{t('Touchdown zählt: Auch ein Land, in dem du nur umsteigst, gilt als besucht.')}</p>
+
+      <SectionTitle>{t('Sicherung in GitHub')}</SectionTitle>
+      <div class="list">
+        <Row
+          lead={<Icon name="cloud" />}
+          title={githubConfigured() ? (meta.lastBackupError ? t('Sicherung fehlgeschlagen') : t('Automatisch gesichert')) : t('Nicht eingerichtet')}
+          sub={
+            githubConfigured()
+              ? meta.lastBackupError || `${t('Zuletzt {t}', { t: fmtAgo(meta.lastBackupAt) })} · ${meta.githubRepo}`
+              : t('Privates Repo als Sicherung deiner Daten')
+          }
+          trail={githubConfigured() ? <span class={`badge ${meta.lastBackupError ? 'warn' : 'ok'}`}>{meta.lastBackupError ? t('Fehler') : t('aktiv')}</span> : undefined}
+          chevron
+          onClick={() => openSheet(() => <GithubSheet />, { tall: true })}
+        />
+        {githubConfigured() && (
+          <>
+            <div class="row">
+              <div class="lead">
+                <Icon name="refresh" />
+              </div>
+              <div class="main">
+                <div class="t">{t('Automatisch sichern')}</div>
+                <div class="s">{t('Kurz nach jeder Änderung')}</div>
+              </div>
+              <Toggle on={meta.autoBackup} onChange={(v) => updateMeta({ autoBackup: v })} />
+            </div>
+            <Row lead={<Icon name="upload" />} title={busy === 'backup' ? t('Sichere …') : t('Jetzt sichern')} onClick={busy ? undefined : doBackup} />
+            <Row lead={<Icon name="download" />} title={busy === 'restore' ? t('Lade …') : t('Sicherung aus GitHub laden')} onClick={busy ? undefined : doRestore} />
+          </>
+        )}
+      </div>
+
+      <SectionTitle>{t('Sicherung als Datei')}</SectionTitle>
+      <div class="list">
+        <Row
+          lead={<Icon name="upload" />}
+          title={t('Sicherung speichern (JSON)')}
+          sub={t('Zuletzt {t}', { t: fmtAgo(meta.lastExportAt) })}
+          trail={warn && !githubConfigured() ? <span class="badge day">{t('empfohlen')}</span> : undefined}
+          onClick={exportJson}
+        />
+        <Row lead={<Icon name="download" />} title={t('Sicherung einspielen')} onClick={() => fileInput.current?.click()} />
+        <Row lead={<Icon name="flag" />} title={t('Länder als CSV')} onClick={exportCountries} />
+        <Row lead={<Icon name="building" />} title={t('Städte als CSV')} onClick={exportCities} />
+      </div>
+      <input ref={fileInput} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => importJson((e.currentTarget as HTMLInputElement).files)} />
+
+      <SectionTitle>{t('Daten')}</SectionTitle>
+      <div class="list">
+        <Row lead={<Icon name="plane" />} title={t('FlightVault importieren')} sub={`${tn(data.flights.length, 'Flug', 'Flüge')} · ${tn(data.fvTrips.length, 'Trip', 'Trips')}`} chevron onClick={openImport} />
+        <Row lead={<Icon name="alert" />} title={t('Datencheck')} sub={d.issues.length ? tn(d.issues.length, 'Hinweis', 'Hinweise') : t('Alles sauber')} chevron onClick={openDataCheck} />
+        <Row
+          lead={<Icon name="shield" />}
+          title={persisted ? t('Daten geschützt') : t('Nicht dauerhaft geschützt')}
+          sub={persisted ? t('Der Browser löscht sie nicht bei Platzmangel') : t('Der Browser könnte Daten bei Platzmangel löschen')}
+          trail={
+            !persisted ? (
+              <button
+                class="btn small press"
+                onClick={async () => {
+                  const ok = await requestPersistence();
+                  setPersisted(ok);
+                  toast(ok ? t('Daten sind jetzt geschützt') : t('Der Browser hat abgelehnt – installiere die App'), !ok);
+                }}
+              >
+                {t('Schützen')}
+              </button>
+            ) : undefined
+          }
+        />
+      </div>
+
+      <SectionTitle>{t('Über')}</SectionTitle>
+      <div class="list plain">
+        <div class="kv">
+          <span class="k">{t('Version')}</span>
+          <span class="v">Meridian {__APP_VERSION__}</span>
+        </div>
+      </div>
+      <p class="hint" style={{ lineHeight: 1.6 }}>
+        {t('Datenquellen')}: <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> (CC BY 4.0),{' '}
+        <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>,{' '}
+        <a href="https://github.com/mledoze/countries" target="_blank" rel="noreferrer">mledoze/countries</a> (ODbL),{' '}
+        <a href="https://github.com/mwgg/Airports" target="_blank" rel="noreferrer">mwgg/Airports</a> (MIT), Twemoji (CC BY 4.0).{' '}
+        {t('Alle Daten bleiben auf deinem Gerät.')}
+      </p>
+
+      <div style={{ margin: '24px 16px 0' }}>
+        <button class="btn danger block press" onClick={wipe}>
+          <Icon name="trash" /> {t('Alle Daten löschen')}
+        </button>
+      </div>
+    </>
+  );
+}
+
+function NameSheet() {
+  const data = useData();
+  const [name, setName] = useState(data.settings.name ?? '');
+  const save = () => {
+    updateData((dd) => ({ ...dd, settings: { ...dd.settings, name: name.trim() || undefined } }));
+    closeSheet();
+  };
+  return (
+    <>
+      <SheetHeader title={t('Dein Name')} />
+      <div class="sheet-body">
+        <label class="field">
+          <span>{t('Name')}</span>
+          <input value={name} placeholder={t('Wie sollen wir dich nennen?')} onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} enterKeyHint="done" />
+        </label>
+        <div class="sheet-actions">
+          <button class="btn primary press" onClick={save}>
+            {t('Speichern')}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function GithubSheet() {
+  const meta = useMeta();
+  const [repo, setRepo] = useState(meta.githubRepo);
+  const [token, setToken] = useState(meta.githubToken);
+  const [path, setPath] = useState(meta.githubPath);
+  const [busy, setBusy] = useState(false);
+  const valid = /^[\w.-]+\/[\w.-]+$/.test(repo.trim()) && token.trim().length > 10 && path.trim().length > 0;
+
+  const save = async () => {
+    updateMeta({ githubRepo: repo.trim(), githubToken: token.trim(), githubPath: path.trim(), lastBackupError: '' });
+    setBusy(true);
+    try {
+      await backupToGithub();
+      toast(t('Verbunden und gesichert'));
+      closeSheet();
+    } catch (e) {
+      toast((e as Error).message, true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <SheetHeader title={t('GitHub-Sicherung')} />
+      <div class="sheet-body">
+        <p class="hint" style={{ margin: '0 20px 16px', fontSize: '14px', color: 'var(--text2)' }}>
+          {t('Deine Daten werden als Datei in ein privates Repo geschrieben. Der Token bleibt nur auf diesem Gerät.')}
+        </p>
+        <label class="field">
+          <span>{t('Repo (benutzer/name)')}</span>
+          <input value={repo} placeholder={t('benutzer/meridian-backup')} autoCapitalize="off" spellcheck={false} onInput={(e) => setRepo((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <label class="field">
+          <span>{t('Zugriffstoken')}</span>
+          <input type="password" value={token} placeholder="github_pat_…" autoComplete="off" onInput={(e) => setToken((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <label class="field">
+          <span>{t('Dateiname')}</span>
+          <input value={path} autoCapitalize="off" spellcheck={false} onInput={(e) => setPath((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <div class="card" style={{ fontSize: '13.5px', color: 'var(--text2)', lineHeight: 1.55 }}>
+          <b style={{ color: 'var(--text)' }}>{t('So erstellst du den Token')}</b>
+          <br />
+          {t(
+            'GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token. Unter «Repository access» nur dein Sicherungs-Repo wählen, bei «Permissions» → Contents auf «Read and write» setzen.',
+          )}
+        </div>
+        <div class="sheet-actions" style={{ marginTop: '16px' }}>
+          {meta.githubToken && (
+            <button
+              class="btn danger press"
+              onClick={() => {
+                updateMeta({ githubToken: '', lastBackupError: '' });
+                closeSheet();
+              }}
+            >
+              {t('Trennen')}
+            </button>
+          )}
+          <button class="btn primary press" disabled={!valid || busy} onClick={save}>
+            {busy ? t('Verbinde …') : t('Verbinden')}
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function HomePicker({ onPicked }: { onPicked?: (cc: string) => void }) {
+  const data = useData();
+  const [q, setQ] = useState('');
+  const n = normalize(q);
+  const list = countriesSorted().filter((c) => c.k && (!n || c.n.some((x) => normalize(x).includes(n))));
+  const pick = (cc: string) => {
+    updateData((dd) => ({ ...dd, settings: { ...dd.settings, home: cc } }));
+    if (onPicked) onPicked(cc);
+    else closeSheet();
+  };
+  return (
+    <>
+      <SheetHeader title={t('Heimatland')} />
+      <div style={{ padding: '4px 16px 10px' }}>
+        <label class="search" style={{ margin: 0 }}>
+          <Icon name="search" />
+          <input value={q} placeholder={t('Land suchen')} onInput={(e) => setQ((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+      </div>
+      <div class="sheet-body">
+        <div class="list plain">
+          {list.map((c) => (
+            <Row
+              lead={flag(c.c)}
+              leadClass="flag"
+              title={countryName(c.c)}
+              trail={
+                data.settings.home === c.c ? (
+                  <span class="check on">
+                    <Icon name="check" stroke={3} />
+                  </span>
+                ) : undefined
+              }
+              onClick={() => pick(c.c)}
+            />
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+export { fmtInt };
