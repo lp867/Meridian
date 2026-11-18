@@ -4,21 +4,25 @@ import { countriesSorted, countryName, getStatic } from '../lib/geo';
 import { flag, normalize } from '../lib/format';
 import { derive } from '../lib/derive';
 import { cloudAvailable, hasAnyData, waitForSync } from '../lib/cloud';
-import { LANGS, t, tn, type Lang } from '../lib/i18n';
+import { LANGS, t, tn } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
 import { Swap } from '../ui/kit';
+import { openSheet } from '../ui/Sheet';
 import { AuthPanel, useAccount } from './Account';
+import { LanguageSheet } from './Profile';
 
 type Step = 'welcome' | 'account' | 'home' | 'done';
 
-/** Einrichtung beim ersten Start: Sprache → Anmelden → Heimatland → fertig. */
+/** Einrichtung beim ersten Start: Willkommen → Konto → Heimatland → fertig. */
 export function Onboarding({ onFinish }: { onFinish: () => void }) {
+  const meta = useMeta();
   const steps: Step[] = cloudAvailable ? ['welcome', 'account', 'home', 'done'] : ['welcome', 'home', 'done'];
   const [step, setStep] = useState<Step>('welcome');
   const [leaving, setLeaving] = useState(false);
   const i = steps.indexOf(step);
   const next = () => setStep(steps[Math.min(steps.length - 1, i + 1)]);
   const back = () => setStep(steps[Math.max(0, i - 1)]);
+  const lang = LANGS.find((l) => l.code === meta.lang) ?? LANGS[0];
 
   const finish = () => {
     void requestPersistence();
@@ -26,10 +30,10 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
     setTimeout(() => {
       updateMeta({ onboarded: true });
       onFinish();
-    }, 480);
+    }, 300);
   };
 
-  // Nach dem Anmelden: Wer schon Reisen im Konto hat, braucht kein Heimatland mehr zu wählen
+  // Nach dem Anmelden: Wer schon Daten im Konto hat, braucht kein Heimatland mehr zu wählen
   const afterSignIn = async () => {
     await waitForSync();
     setStep(hasAnyData() ? 'done' : 'home');
@@ -44,14 +48,21 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
             <Icon name="chevL" stroke={2.3} />
           </button>
         ) : (
-          <span style={{ width: '42px' }} />
+          <span class="onb-top-spacer" />
         )}
         <div class="onb-dots" aria-hidden="true">
           {steps.map((s, n) => (
             <i class={n === i ? 'on' : n < i ? 'past' : ''} key={s} />
           ))}
         </div>
-        <span style={{ width: '42px' }} />
+        {step === 'welcome' ? (
+          <button class="onb-lang press" onClick={() => openSheet(() => <LanguageSheet />)} aria-label={t('Sprache')}>
+            {flag(lang.cc)} {lang.code.toUpperCase()}
+            <Icon name="chevD" size={14} stroke={2.4} />
+          </button>
+        ) : (
+          <span class="onb-top-spacer" />
+        )}
       </div>
       <div class="onb-stage">
         <Swap value={step} order={steps}>
@@ -65,30 +76,22 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
   );
 }
 
-// ---------- 1. Willkommen + Sprache ----------
+// ---------- 1. Willkommen ----------
 function Welcome({ onNext }: { onNext: () => void }) {
-  const meta = useMeta();
   return (
     <div class="onb-page">
       <GlobeHero />
-      <div class="onb-langs" role="radiogroup" aria-label={t('Sprache')}>
-        {LANGS.map((l) => (
-          <button class={`chip press ${meta.lang === l.code ? 'on' : ''}`} role="radio" aria-checked={meta.lang === l.code} onClick={() => updateMeta({ lang: l.code as Lang })}>
-            {flag(l.cc)} {l.name}
-          </button>
-        ))}
-      </div>
-      <div class="onb-copy" key={meta.lang}>
+      <div class="onb-copy">
         <h1>{t('Willkommen bei Meridian')}</h1>
-        <p>{t('Deine Welt an einem Ort: Länder, Städte, Trips und Flüge, schnell und übersichtlich.')}</p>
+        <p>{t('Deine Welt an einem Ort: Länder, Städte und Flüge – schnell und übersichtlich.')}</p>
       </div>
-      <div class="onb-features stagger" key={`f${meta.lang}`}>
+      <div class="onb-features">
         {[
           { icon: 'globe', t: t('Weltkarte'), s: t('Besuchte Länder und Städte auf einen Blick') },
           { icon: 'building', t: t('Städte sammeln'), s: t('Grosse Städte und eigene Orte direkt auf der Karte') },
           { icon: 'shield', t: t('Deine Daten bleiben bei dir'), s: t('Ohne Konto alles auf dem Gerät, mit Konto auf allen Geräten') },
-        ].map((f, n) => (
-          <div class="onb-feature" style={{ '--i': String(n + 2) }}>
+        ].map((f) => (
+          <div class="onb-feature">
             <div class="lead">
               <Icon name={f.icon} />
             </div>
@@ -108,20 +111,23 @@ function Welcome({ onNext }: { onNext: () => void }) {
   );
 }
 
-/** Weltkarte, auf der nach und nach Länder aufleuchten. */
+/** Ruhige Weltkarte mit einigen markierten Ländern. */
 function GlobeHero() {
   const st = getStatic();
-  const litSet = useMemo(() => new Set(['CA', 'US', 'BR', 'FR', 'IT', 'ES', 'GB', 'DE', 'CH', 'GR', 'EG', 'ZA', 'IN', 'TH', 'JP', 'AU', 'NZ', 'MX', 'PE', 'NO']), []);
+  const lit = useMemo(() => new Set(['CA', 'US', 'BR', 'FR', 'IT', 'ES', 'GB', 'DE', 'CH', 'GR', 'EG', 'ZA', 'IN', 'TH', 'JP', 'AU', 'NZ', 'MX', 'PE', 'NO']), []);
   return (
     <div class="onb-globe">
       <svg viewBox={`0 ${st.world.h * 0.06} ${st.world.w} ${st.world.h * 0.8}`} preserveAspectRatio="xMidYMid meet">
-        {st.world.countries.map((m) => (m.d ? <path class={`cty ${m.c && litSet.has(m.c) ? 'v' : ''}`} d={m.d} /> : null))}
+        {st.world.countries.map((m) => {
+          const d = m.l || m.d; // grobe Detailstufe reicht hier und ist schneller
+          return d ? <path class={`cty ${m.c && lit.has(m.c) ? 'v' : ''}`} d={d} /> : null;
+        })}
       </svg>
     </div>
   );
 }
 
-// ---------- 2. Anmelden ----------
+// ---------- 2. Konto ----------
 function AccountStep({ onSignedIn, onSkip }: { onSignedIn: () => void; onSkip: () => void }) {
   const acc = useAccount();
   const [waiting, setWaiting] = useState(false);
@@ -129,15 +135,11 @@ function AccountStep({ onSignedIn, onSkip }: { onSignedIn: () => void; onSkip: (
   return (
     <div class="onb-page">
       <div class="onb-copy">
-        <div class="onb-icon pop-in">
-          <Icon name={signedIn ? 'check' : 'cloud'} />
+        <div class="onb-icon">
+          <Icon name={signedIn ? 'check' : 'user'} />
         </div>
-        <h1>{signedIn ? t('Angemeldet') : t('Melde dich an')}</h1>
-        <p>
-          {signedIn
-            ? acc.email
-            : t('Mit einem kostenlosen Konto sind deine Reisen gesichert und auf all deinen Geräten da – auch wenn du Meridian schon nutzt.')}
-        </p>
+        <h1>{signedIn ? t('Angemeldet') : t('Dein Konto')}</h1>
+        <p>{signedIn ? acc.email : t('Melde dich an, wenn du Meridian schon nutzt – oder erstelle ein kostenloses Konto. So sind deine Daten gesichert und auf allen Geräten da.')}</p>
       </div>
       {signedIn ? (
         <div class="onb-actions">
@@ -154,9 +156,6 @@ function AccountStep({ onSignedIn, onSkip }: { onSignedIn: () => void; onSkip: (
             }}
           />
           <div class="onb-actions">
-            <p class="hint" style={{ textAlign: 'center', margin: '0 0 6px' }}>
-              {t('Deine Reisen werden in Zürich gespeichert und nur für dich zugänglich.')}
-            </p>
             <button class="onb-skip press" onClick={onSkip}>
               {t('Ohne Konto fortfahren')}
             </button>
@@ -182,13 +181,13 @@ function HomeStep({ onNext }: { onNext: () => void }) {
   }, []);
   const pick = (cc: string) => updateData((d) => ({ ...d, settings: { ...d.settings, home: cc } }));
   return (
-    <div class="onb-page">
-      <div class="onb-copy">
-        <div class="onb-flag pop-in" key={home}>
+    <div class="onb-page fill">
+      <div class="onb-copy compact">
+        <div class="onb-flag" key={home}>
           {flag(home)}
         </div>
         <h1>{t('Wo bist du zuhause?')}</h1>
-        <p>{t('Trips beginnen und enden in deinem Heimatland. Es zählt auch als besucht.')}</p>
+        <p>{t('Dein Heimatland zählt automatisch als besucht.')}</p>
       </div>
       <label class="search" style={{ margin: '0 0 10px' }}>
         <Icon name="search" />
@@ -196,8 +195,8 @@ function HomeStep({ onNext }: { onNext: () => void }) {
       </label>
       <div class="onb-list" ref={listRef}>
         {list.map((c) => (
-          <button class={`onb-option press ${c.c === home ? 'on' : ''}`} style={{ '--press': '0.98' }} onClick={() => pick(c.c)}>
-            <span style={{ fontSize: '26px' }}>{flag(c.c)}</span>
+          <button class={`onb-option press ${c.c === home ? 'on' : ''}`} onClick={() => pick(c.c)}>
+            <span style={{ fontSize: '24px' }}>{flag(c.c)}</span>
             <span class="grow">{countryName(c.c)}</span>
             <span class={`check ${c.c === home ? 'on' : ''}`}>
               <Icon name="check" stroke={3} />
@@ -233,11 +232,11 @@ function DoneStep({ onFinish }: { onFinish: () => void }) {
           {data.flights.length ? ` · ${tn(data.flights.length, 'Flug', 'Flüge')}` : ''}
         </p>
       </div>
-      <div class="onb-tip pop-in" style={{ animationDelay: '500ms' }}>
+      <div class="onb-tip">
         <Icon name="sparkle" />
-        <span>{t('Tippe auf ein Land, um es zu markieren. Halte den Finger auf die Karte gedrückt, um einen Ort hinzuzufügen. Flüge importierst du im Tab «Flüge».')}</span>
+        <span>{t('Tippe auf ein Land, um es zu markieren. Halte den Finger auf die Karte gedrückt, um einen Ort hinzuzufügen. Flüge importierst du unter Profil.')}</span>
       </div>
-      <div class="onb-actions" style={{ marginTop: 'auto' }}>
+      <div class="onb-actions">
         <button class="btn primary block press" onClick={onFinish}>
           {t('Meridian öffnen')}
         </button>

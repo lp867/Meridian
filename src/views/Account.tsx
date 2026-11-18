@@ -147,17 +147,42 @@ export function AuthPanel({ onSuccess }: { onSuccess: () => void }) {
           <div class="auth-step">
             <button class="btn block press auth-google big" disabled={!!busy} onClick={google}>
               <GoogleLogo size={24} />
-              <span>{busy === 'google' ? t('Warte auf Google …') : t('Mit Google anmelden')}</span>
+              <span>{busy === 'google' ? t('Warte auf Google …') : t('Mit Google fortfahren')}</span>
             </button>
-            <button class="btn block press auth-mail" disabled={!!busy} onClick={() => goto('email')}>
-              <Icon name="mail" /> {t('Mit E-Mail anmelden')}
-            </button>
+            <p class="auth-note">{t('Mit Google meldest du dich an oder erstellst automatisch ein Konto.')}</p>
+            <div class="auth-or">
+              <span>{t('oder mit E-Mail')}</span>
+            </div>
+            {/* Klar getrennt: bestehendes Konto oder neues Konto */}
+            <div class="auth-split">
+              <button
+                class="btn press auth-mail"
+                disabled={!!busy}
+                onClick={() => {
+                  setMode('signin');
+                  goto('email');
+                }}
+              >
+                {t('Anmelden')}
+              </button>
+              <button
+                class="btn press auth-mail"
+                disabled={!!busy}
+                onClick={() => {
+                  setMode('signup');
+                  goto('email');
+                }}
+              >
+                {t('Konto erstellen')}
+              </button>
+            </div>
             {messages}
           </div>
         )}
 
         {step === 'email' && (
           <form class="auth-step" onSubmit={submit}>
+            <b class="auth-mode">{mode === 'signup' ? t('Neues Konto erstellen') : t('Mit bestehendem Konto anmelden')}</b>
             <label class="field big">
               <span>{t('Deine E-Mail-Adresse')}</span>
               <input

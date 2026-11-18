@@ -345,7 +345,7 @@ function ThemeSheet() {
   );
 }
 
-function LanguageSheet() {
+export function LanguageSheet() {
   const meta = useMeta();
   return (
     <>

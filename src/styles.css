@@ -2305,3 +2305,171 @@ svg {
 .danger-zone .row .lead {
   background: var(--danger-tint);
 }
+
+/* ---------- Einrichtung: passt auf kleine Handys, scrollt bei Bedarf ---------- */
+.onb {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+.onb-top {
+  height: 44px;
+}
+.onb-top-spacer {
+  width: 64px;
+}
+.onb-lang {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  font-weight: 650;
+  background: var(--s2);
+  box-shadow: var(--rim);
+  color: var(--text);
+  min-width: 64px;
+}
+.onb-stage > .swap {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.onb-stage > .swap::-webkit-scrollbar {
+  display: none;
+}
+.onb-page {
+  flex: none;
+  min-height: 100%;
+}
+.onb-page.fill {
+  height: 100%;
+}
+.onb-globe {
+  margin: 0 -16px;
+  display: flex;
+  justify-content: center;
+}
+.onb-globe svg {
+  width: 100%;
+  max-height: 24vh;
+}
+.onb-copy {
+  padding: 6px 4px 14px;
+}
+.onb-copy h1 {
+  font-size: clamp(24px, 7vw, 30px);
+}
+.onb-copy p {
+  font-size: 15px;
+}
+.onb-copy.compact {
+  padding-bottom: 10px;
+}
+.onb-flag {
+  font-size: 56px;
+  margin-bottom: 10px;
+}
+.onb-icon {
+  width: 60px;
+  height: 60px;
+  margin: 4px auto 14px;
+  border-radius: 20px;
+}
+.onb-features {
+  gap: 8px;
+}
+.onb-feature {
+  padding: 10px 12px;
+  gap: 12px;
+}
+.onb-feature .lead {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+}
+.onb-feature b {
+  font-size: 14.5px;
+}
+.onb-feature span {
+  font-size: 13px;
+}
+/* Knopf unten bleibt immer sichtbar, Inhalt scrollt darunter durch */
+.onb-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  margin-top: auto;
+  padding: 18px 0 2px;
+  background: linear-gradient(to bottom, transparent, var(--bg) 30%);
+}
+.onb-actions .btn {
+  height: 52px;
+}
+.onb-skip {
+  margin: 4px auto 0;
+}
+@media (max-height: 700px) {
+  .onb-globe svg {
+    max-height: 18vh;
+  }
+  .onb-feature span {
+    display: none;
+  }
+}
+
+/* ---------- Meldungen: flach, breit, wegwischbar ---------- */
+.toast {
+  width: min(calc(100% - 24px), 520px);
+  max-width: none;
+  justify-content: flex-start;
+  padding: 9px 16px;
+  gap: 9px;
+  border-radius: 999px;
+  font-size: 13.5px;
+  line-height: 1.3;
+  top: calc(var(--safe-t) + 8px);
+  touch-action: none;
+  cursor: grab;
+}
+.toast span {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.toast svg {
+  width: 16px;
+  height: 16px;
+}
+.toast:not(.show) {
+  pointer-events: none;
+}
+.toast.dragging {
+  transition: none;
+}
+
+/* ---------- Anmeldung: Anmelden / Konto erstellen getrennt ---------- */
+.auth-note {
+  margin: -2px 4px 0;
+  font-size: 13px;
+  color: var(--text3);
+  text-align: center;
+}
+.auth-step .auth-or {
+  margin: 4px 4px;
+}
+.auth-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.auth-split .btn {
+  width: 100%;
+}
+.auth-mode {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 4px 2px;
+}
