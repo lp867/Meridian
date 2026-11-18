@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
-import { countriesSorted, countryName, getStatic } from '../lib/geo';
+import { cityRowName, countriesSorted, countryName, getStatic, loadCities, type CityRow } from '../lib/geo';
+import { locate, nearbyCities } from '../lib/locate';
+import { countryAt } from '../ui/MapCanvas';
+import { toast } from '../ui/Toast';
+import { addCity } from './Cities';
 import { flag, normalize } from '../lib/format';
 import { derive } from '../lib/derive';
 import { cloudAvailable, hasAnyData, waitForSync } from '../lib/cloud';
@@ -180,6 +184,31 @@ function HomeStep({ onNext }: { onNext: () => void }) {
     listRef.current?.querySelector('.on')?.scrollIntoView({ block: 'center' });
   }, []);
   const pick = (cc: string) => updateData((d) => ({ ...d, settings: { ...d.settings, home: cc } }));
+  // Standort: Heimatland vorwählen und die Stadt dort gleich als Wohnort hinzufügen
+  const [here, setHere] = useState<CityRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const fromLocation = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const p = await locate();
+      const idx = await loadCities();
+      const cc = countryAt(p.lon, p.lat) ?? nearbyCities(idx, p.lat, p.lon, 150, 1)[0]?.r[2];
+      if (!cc) throw new Error(t('An deinem Standort wurde kein Land gefunden.'));
+      setQ('');
+      pick(cc);
+      const near = nearbyCities(idx, p.lat, p.lon, 30, 1)[0];
+      setHere(near && near.r[2] === cc ? near.r : null);
+      setTimeout(() => listRef.current?.querySelector('.on')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
+    setBusy(false);
+  };
+  const finish = () => {
+    if (here && here[2] === home) addCity(here, {});
+    onNext();
+  };
   return (
     <div class="onb-page fill">
       <div class="onb-copy compact">
@@ -189,10 +218,23 @@ function HomeStep({ onNext }: { onNext: () => void }) {
         <h1>{t('Wo bist du zuhause?')}</h1>
         <p>{t('Dein Heimatland zählt automatisch als besucht.')}</p>
       </div>
-      <label class="search" style={{ margin: '0 0 10px' }}>
-        <Icon name="search" />
-        <input value={q} placeholder={t('Land suchen')} onInput={(e) => setQ((e.currentTarget as HTMLInputElement).value)} />
-      </label>
+      <div class="onb-search-row">
+        <label class="search">
+          <Icon name="search" />
+          <input value={q} placeholder={t('Land suchen')} onInput={(e) => setQ((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <button class={`onb-locate press ${busy ? 'busy' : ''}`} onClick={fromLocation} aria-label={t('Standort verwenden')} title={t('Standort verwenden')}>
+          <Icon name="locate" stroke={2.1} />
+        </button>
+      </div>
+      {here && here[2] === home && (
+        <p class="onb-here">
+          <Icon name="pin" size={15} stroke={2.2} /> {t('{c} wird als deine Stadt hinzugefügt', { c: cityRowName(here) })}
+          <button class="link" onClick={() => setHere(null)}>
+            {t('Nicht hinzufügen')}
+          </button>
+        </p>
+      )}
       <div class="onb-list" ref={listRef}>
         {list.map((c) => (
           <button class={`onb-option press ${c.c === home ? 'on' : ''}`} onClick={() => pick(c.c)}>
@@ -205,7 +247,7 @@ function HomeStep({ onNext }: { onNext: () => void }) {
         ))}
       </div>
       <div class="onb-actions">
-        <button class="btn primary block press" onClick={onNext}>
+        <button class="btn primary block press" onClick={finish}>
           {t('Weiter mit {c}', { c: countryName(home) })}
         </button>
       </div>

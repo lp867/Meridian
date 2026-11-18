@@ -7,6 +7,7 @@ import { zoom as d3zoom, zoomIdentity, type ZoomBehavior, type ZoomTransform } f
 import { interpolateZoom } from 'd3-interpolate';
 import { getStatic } from '../lib/geo';
 import { reducedMotion } from '../lib/spring';
+import { TileLayer, type TileSource } from './tiles';
 
 export type Box = [number, number, number, number];
 export interface MapDot {
@@ -56,6 +57,10 @@ interface Props {
   arcs?: MapArc[];
   airports?: MapDot[];
   cities?: CityLayer | null;
+  /** Kartenbilder unter den Ländern (Gelände/Satellit); ohne = schlichte Karte */
+  tiles?: TileSource | null;
+  /** «Du bist hier» (Kartenkoordinaten) */
+  me?: { x: number; y: number } | null;
   onCountry?: (code: string | null) => void;
   onCity?: (id: number) => void;
   onLongPress?: (p: MapPress) => void;
@@ -176,7 +181,7 @@ function readPalette(): Palette {
 
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 
-export function WorldMap({ status, selected, dots, arcs, airports, cities, onCountry, onCity, onLongPress, onScale, initialBox, apiRef, padTop = 20, padBottom = 20 }: Props) {
+export function WorldMap({ status, selected, dots, arcs, airports, cities, tiles, me, onCountry, onCity, onLongPress, onScale, initialBox, apiRef, padTop = 20, padBottom = 20 }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const S = useRef({
@@ -199,6 +204,8 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     pl: { x: new Float32Array(MAX_CITIES), y: new Float32Array(MAX_CITIES), lx: new Float32Array(MAX_CITIES), i: new Int32Array(MAX_CITIES), n: 0 },
     grid: new Int32Array(0),
     labelW: new Map<number, number>(),
+    tileLayer: null as TileLayer | null,
+    me: null as { x: number; y: number } | null,
     zoomTo: 0, // Ziel-Zoom der Knöpfe (mehrmals schnell klicken summiert sich)
     scaleState: '',
     pulse: null as { id: number; t0: number } | null,
@@ -254,11 +261,32 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     const rel = t.k / (w / getStatic().world.w);
     const level = rel < 2.4 ? 0 : rel < 7 ? 1 : 2;
 
+    const tl = S.tileLayer;
+    if (tl) {
+      tl.draw(ctx, getStatic().projection, t, w, h, dpr);
+      ctx.setTransform(dpr * t.k, 0, 0, dpr * t.k, dpr * t.x, dpr * t.y);
+    }
+    // Ganz nah soll das Bild klar bleiben: Einfärbung der Länder wird dann schwächer
+    const tint = !tl || rel <= 6 ? 1 : rel >= 80 ? 0.25 : 1 - 0.75 * (Math.log(rel / 6) / Math.log(80 / 6));
     // Länderflächen
     for (const g of geo) {
       if (!g.path || !visible(g.bb)) continue;
       const gp = pathAt(g, level);
       if (!gp) continue;
+      if (tl) {
+        // über dem Bild: nur besuchte und gewünschte Länder durchscheinend einfärben
+        const st = g.c ? S.status[g.c] : undefined;
+        const isSel = !!g.c && g.c === S.sel;
+        const isHov = !!g.c && g.c === S.hover;
+        let alpha = st ? 0.42 : 0;
+        if (isSel) alpha = st ? 0.42 + 0.2 * selK : 0.2 * selK;
+        else if (isHov) alpha = st ? 0.52 : 0.14;
+        alpha *= tint;
+        if (alpha <= 0.01) continue;
+        ctx.fillStyle = css(st ? colorOf(g.c, now) : tl.src.light ? [255, 255, 255] : pal.text, alpha);
+        ctx.fill(gp);
+        continue;
+      }
       let c = colorOf(g.c, now);
       if (g.c && g.c === S.sel) c = mix(c, S.status[g.c] ? pal.visitedHi : pal.text, (S.status[g.c] ? 0.55 : 0.18) * selK);
       else if (g.c && g.c === S.hover) c = mix(c, pal.text, pal.light ? 0.1 : 0.12);
@@ -269,7 +297,7 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     // rund dreimal schneller als dickere Linien, das war die Hauptursache fürs Ruckeln beim Zoomen.
     ctx.lineJoin = 'miter';
     ctx.lineWidth = 1 / (dpr * t.k);
-    ctx.strokeStyle = css(pal.border);
+    ctx.strokeStyle = tl ? (tl.src.light ? 'rgba(40,48,62,0.5)' : 'rgba(255,255,255,0.55)') : css(pal.border);
     for (const g of geo) {
       if (!g.path || !visible(g.bb)) continue;
       const gp = pathAt(g, level);
@@ -282,7 +310,7 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       const gp = g && pathAt(g, level);
       if (gp) {
         ctx.lineWidth = 1.8 * lw;
-        ctx.strokeStyle = css(pal.text, 0.9 * selK);
+        ctx.strokeStyle = tl ? (tl.src.light ? css([20, 28, 40], 0.9 * selK) : css([255, 255, 255], 0.95 * selK)) : css(pal.text, 0.9 * selK);
         ctx.stroke(gp);
       }
     }
@@ -331,6 +359,26 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
         ctx.strokeStyle = css(pal.dotStroke);
         ctx.stroke();
       }
+    // Du bist hier: blauer Punkt mit weissem Rand und weichem Hof
+    if (S.me) {
+      const mx = S.me.x * t.k + t.x;
+      const my = S.me.y * t.k + t.y;
+      if (mx > -20 && mx < w + 20 && my > -20 && my < h + 20) {
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.beginPath();
+        ctx.arc(mx, my, 17, 0, TAU);
+        ctx.fillStyle = 'rgba(26,115,232,0.16)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(mx, my, 8, 0, TAU);
+        ctx.fillStyle = '#ffffff';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(mx, my, 5.6, 0, TAU);
+        ctx.fillStyle = '#1a73e8';
+        ctx.fill();
+      }
+    }
     if (S.anim.size || S.pulse || (S.sel && now - S.selT0 < 260)) S.raf = requestAnimationFrame(draw);
   };
 
@@ -568,6 +616,19 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     return zoomIdentity.translate(w / 2 - k * cx, pt + availH / 2 - k * cy).scale(k);
   };
 
+  /** Stärkster Zoom: schlichte Karte 400-fach, mit Bildern bis zur feinsten Kachelstufe. */
+  const maxK = () => {
+    const st = getStatic();
+    const kWorld = S.w / st.world.w;
+    const src = S.tileLayer?.src;
+    if (!src) return kWorld * 400;
+    const p0 = st.projection([0, 0])!;
+    const p1 = st.projection([1, 0])!;
+    const unitsPerDeg = Math.abs(p1[0] - p0[0]);
+    const pxPerDeg = (256 * 2 ** (src.maxZoom + 0.6)) / 360 / Math.min(S.dpr, 2);
+    return Math.max(kWorld * 400, pxPerDeg / unitsPerDeg);
+  };
+
   const setupZoom = () => {
     const el = root.current!;
     const st = getStatic();
@@ -587,7 +648,7 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
         reportScale();
         redraw();
       }));
-    z.scaleExtent([kWorld * 0.85, kWorld * 60])
+    z.scaleExtent([kWorld * 0.85, maxK()])
       .translateExtent([
         [-st.world.w * 0.15, -st.world.h * 0.4],
         [st.world.w * 1.15, st.world.h * 1.4],
@@ -732,6 +793,28 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       redraw();
     }
   }, [selected]);
+
+  useEffect(() => {
+    S.tileLayer?.dispose();
+    S.tileLayer = tiles ? new TileLayer(tiles, redraw) : null;
+    if (S.zoom && root.current && S.w) {
+      const k1 = maxK();
+      S.zoom.scaleExtent([S.zoom.scaleExtent()[0], k1]);
+      if (S.t.k > k1) S.zoom.scaleTo(select(root.current), k1);
+      S.scaleState = '';
+      reportScale();
+    }
+    redraw();
+    return () => {
+      S.tileLayer?.dispose();
+      S.tileLayer = null;
+    };
+  }, [tiles]);
+
+  useEffect(() => {
+    S.me = me ?? null;
+    redraw();
+  }, [me]);
 
   useEffect(() => {
     S.city = cities ?? null;
@@ -924,4 +1007,18 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       </div>
     </div>
   );
+}
+
+/** Land an einer Position (Längen-/Breitengrad) – über die Ländergrenzen der Karte. */
+let hitCanvas: CanvasRenderingContext2D | null = null;
+export function countryAt(lon: number, lat: number): string | null {
+  const p = getStatic().projection([lon, lat]);
+  if (!p) return null;
+  hitCanvas ??= document.createElement('canvas').getContext('2d');
+  for (const g of geometry()) {
+    if (!g.path || !g.c) continue;
+    if (p[0] < g.bb[0] || p[0] > g.bb[2] || p[1] < g.bb[1] || p[1] > g.bb[3]) continue;
+    if (hitCanvas!.isPointInPath(g.path, p[0], p[1])) return g.c;
+  }
+  return null;
 }

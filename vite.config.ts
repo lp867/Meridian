@@ -10,7 +10,7 @@ const CSP = [
   "default-src 'self'",
   "script-src 'self' https://apis.google.com https://www.google.com https://www.gstatic.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  "img-src 'self' data: blob: https://tiles.maps.eox.at",
   "font-src 'self' data:",
   "connect-src 'self' https://*.googleapis.com",
   "frame-src https://*.firebaseapp.com https://accounts.google.com https://www.google.com",

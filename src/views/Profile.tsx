@@ -363,6 +363,12 @@ function AboutSheet() {
           <a href="https://github.com/mledoze/countries" target="_blank" rel="noreferrer">mledoze/countries</a> (ODbL),{' '}
           <a href="https://github.com/mwgg/Airports" target="_blank" rel="noreferrer">mwgg/Airports</a> (MIT), Twemoji (CC BY 4.0).
         </p>
+        <p class="hint" style={{ margin: '12px 20px 0', lineHeight: 1.6 }}>
+          {t('Kartenansicht Gelände und Satellit')}: <a href="https://maps.eox.at" target="_blank" rel="noreferrer">Terrain Light</a> © EOX ({t('Daten')} ©{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>),{' '}
+          <a href="https://s2maps.eu" target="_blank" rel="noreferrer">Sentinel-2 cloudless 2016</a> © EOX IT Services GmbH (CC BY 4.0, {t('enthält veränderte Copernicus-Sentinel-Daten 2016')}).{' '}
+          {t('Diese Bilder werden nur geladen, wenn du die Ansicht auswählst. Den Standort fragt Meridian nur auf Knopfdruck ab, er bleibt auf deinem Gerät.')}
+        </p>
       </div>
     </>
   );

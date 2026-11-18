@@ -122,4 +122,5 @@ export interface Meta {
   lang: 'de' | 'en' | 'fr' | 'es';
   theme: 'system' | 'dark' | 'light';
   mapCityMin?: number; // Städte-Modus der Karte: Mindestgrösse (Einwohner)
+  mapStyle?: 'simple' | 'terrain' | 'satellite'; // Kartenansicht
 }

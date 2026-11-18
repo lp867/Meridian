@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { useData, useMeta } from '../lib/store';
+import { updateMeta, useData, useMeta } from '../lib/store';
 import { cityName, useDerived } from '../lib/derive';
 import { CONTINENTS, continentName, countryName, getStatic, project } from '../lib/geo';
 import { flag, fmt1 } from '../lib/format';
@@ -8,10 +8,12 @@ import { onShowCitiesOnMap } from '../lib/mapEvents';
 import { WorldMap, unionBox, type Box, type MapApi } from '../ui/WorldMap';
 import { AnimatedNumber, Progress, Ring } from '../ui/kit';
 import { Icon } from '../ui/Icon';
-import { openSheet } from '../ui/Sheet';
+import { SheetHeader, closeSheet, openSheet } from '../ui/Sheet';
+import { TILE_SOURCES } from '../ui/tiles';
+import type { Meta } from '../lib/types';
 import { useNav } from '../ui/Stack';
 import { CountrySheet } from './Countries';
-import { openAddPlace } from './Cities';
+import { addFromLocation, openAddPlace } from './Cities';
 import { CityModePanel, buildCityLayer, countryBox, pickCityCountry, pickCitySize, tapCity, useCityIndex } from './MapCities';
 
 export function MapScreen() {
@@ -25,6 +27,23 @@ export function MapScreen() {
   const [open, setOpen] = useState(false);
   const [world, setWorld] = useState(false);
   const [scale, setScale] = useState({ min: false, max: false });
+  const [me, setMe] = useState<{ x: number; y: number } | null>(null);
+  const [locating, setLocating] = useState(false);
+  const style = meta.mapStyle ?? 'simple';
+  const tiles = style === 'simple' ? null : TILE_SOURCES[style];
+
+  // Standort: Punkt setzen, hinfliegen, Städte dort zum Hinzufügen anbieten
+  const locateMe = async () => {
+    if (locating) return;
+    setLocating(true);
+    await addFromLocation((p) => {
+      const [x, y] = project(p.lon, p.lat);
+      setMe({ x, y });
+      setWorld(false);
+      api.current?.fitBox([x - 3, y - 2, x + 3, y + 2]);
+    });
+    setLocating(false);
+  };
 
   // ---------- Städte-Modus ----------
   const [cityMode, setCityMode] = useState(false);
@@ -120,6 +139,8 @@ export function MapScreen() {
         selected={cityMode ? cityCc : selected}
         dots={cityMode ? undefined : dots}
         cities={built?.layer ?? null}
+        tiles={tiles}
+        me={me}
         onCountry={onCountry}
         onCity={onCity}
         onLongPress={(p) => openAddPlace(p.lon, p.lat, p.code)}
@@ -207,8 +228,14 @@ export function MapScreen() {
             {t('Städte')}
           </button>
         )}
-        <button class="icon-btn mat press" onClick={toggleFit} aria-label={world ? t('Meine Länder zeigen') : t('Ganze Welt zeigen')}>
-          <Icon name={world ? 'locate' : 'globe'} />
+        <button class="icon-btn mat press" onClick={() => openSheet(() => <MapStyleSheet />)} aria-label={t('Kartenansicht')} title={t('Kartenansicht')}>
+          <Icon name="layers" />
+        </button>
+        <button class="icon-btn mat press" onClick={toggleFit} aria-label={world ? t('Meine Länder zeigen') : t('Ganze Welt zeigen')} title={world ? t('Meine Länder zeigen') : t('Ganze Welt zeigen')}>
+          <Icon name={world ? 'flag' : 'globe'} />
+        </button>
+        <button class={`icon-btn mat press ${locating ? 'busy' : ''}`} onClick={locateMe} aria-label={t('Mein Standort')} title={t('Mein Standort')}>
+          <Icon name="locate" />
         </button>
         {/* Zoom-Knöpfe wie bei Google Maps – nur mit Maus/Touchpad (am Handy zoomt man mit zwei Fingern) */}
         <div class="zoom-ctl mat">
@@ -220,6 +247,66 @@ export function MapScreen() {
             <Icon name="minus" stroke={2.2} />
           </button>
         </div>
+      </div>
+
+      {tiles && <MapAttribution style={style} />}
+    </>
+  );
+}
+
+/** Quellenangabe für die Kartenbilder (Pflicht laut Lizenz). */
+function MapAttribution({ style }: { style: Meta['mapStyle'] }) {
+  const a = (href: string, text: string) => (
+    <a href={href} target="_blank" rel="noreferrer">
+      {text}
+    </a>
+  );
+  return (
+    <div class="map-attrib">
+      {style === 'satellite' ? (
+        <>
+          {a('https://s2maps.eu', 'Sentinel-2 cloudless 2016')} © {a('https://eox.at', 'EOX')} · Copernicus
+        </>
+      ) : (
+        <>
+          {a('https://maps.eox.at', 'Terrain Light')} © {a('https://eox.at', 'EOX')} · {t('Daten')} © {a('https://www.openstreetmap.org/copyright', 'OpenStreetMap')}{' '}
+          & {a('https://maps.eox.at/#data', t('andere'))}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Kartenansicht wählen: schlicht (ohne Internet), Gelände oder Satellit. */
+function MapStyleSheet() {
+  const meta = useMeta();
+  const cur = meta.mapStyle ?? 'simple';
+  const options: { value: NonNullable<Meta['mapStyle']>; label: string }[] = [
+    { value: 'simple', label: t('Einfach') },
+    { value: 'terrain', label: t('Gelände') },
+    { value: 'satellite', label: t('Satellit') },
+  ];
+  return (
+    <>
+      <SheetHeader title={t('Kartenansicht')} />
+      <div class="sheet-body">
+        <div class="style-grid">
+          {options.map((o) => (
+            <button
+              class={`style-opt press ${o.value === cur ? 'on' : ''}`}
+              onClick={() => {
+                updateMeta({ mapStyle: o.value });
+                closeSheet();
+              }}
+            >
+              <span class={`style-swatch ${o.value}`} />
+              <span>{o.label}</span>
+            </button>
+          ))}
+        </div>
+        <p class="hint" style={{ margin: '14px 20px 0', lineHeight: 1.5 }}>
+          {t('Gelände und Satellit laden Kartenbilder von EOX in Wien und erlauben tieferes Zoomen. EOX sieht dabei nur den Kartenausschnitt, nicht deine Reisen.')}
+        </p>
       </div>
     </>
   );

@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'preact/hooks';
 import { updateData, useData } from '../lib/store';
 import { cityName, citySuggestions, useDerived } from '../lib/derive';
-import { cityRowName, cityRowNames, countryName, type CityRow } from '../lib/geo';
+import { cityRowName, cityRowNames, countryName, loadCities, type CityRow } from '../lib/geo';
+import { locate, nearbyCities, type Position } from '../lib/locate';
+import { countryAt } from '../ui/MapCanvas';
 import { flag, fmtDate, fmtInt, fmtPop, fmtRange, normalize } from '../lib/format';
 import { getLang, t, tn } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
@@ -87,9 +89,21 @@ function QuickAdd() {
           spellcheck={false}
           onInput={(e) => setQ((e.currentTarget as HTMLInputElement).value)}
         />
-        {q && (
+        {q ? (
           <button class="clear" onClick={() => setQ('')} aria-label={t('Leeren')}>
             <Icon name="x" stroke={2.6} />
+          </button>
+        ) : (
+          <button
+            class="qa-locate press"
+            onClick={(e) => {
+              e.preventDefault();
+              void addFromLocation();
+            }}
+            aria-label={t('Aktuellen Standort hinzufügen')}
+            title={t('Aktuellen Standort hinzufügen')}
+          >
+            <Icon name="locate" stroke={2.1} />
           </button>
         )}
       </label>
@@ -278,36 +292,37 @@ function CityAddSheet({ cc }: { cc?: string }) {
   );
 }
 
-/** Langes Drücken auf die Karte: Stadt in der Nähe wählen oder eigenen Ort anlegen. */
-export function openAddPlace(lon: number, lat: number, cc: string | null) {
+/** Langes Drücken auf die Karte (oder der eigene Standort): Stadt in der Nähe wählen oder eigenen Ort anlegen. */
+export function openAddPlace(lon: number, lat: number, cc: string | null, here = false) {
   if (!cc) {
-    toast(t('An dieser Stelle ist kein Land'), true);
+    toast(here ? t('An deinem Standort wurde kein Land gefunden.') : t('An dieser Stelle ist kein Land'), true);
     return;
   }
-  openSheet(() => <AddPlaceSheet lon={lon} lat={lat} cc={cc} />, { tall: true });
+  openSheet(() => <AddPlaceSheet lon={lon} lat={lat} cc={cc} here={here} />, { tall: true });
 }
 
-function AddPlaceSheet({ lon, lat, cc }: { lon: number; lat: number; cc: string }) {
+/** Standort bestimmen und die Städte dort zum Hinzufügen anbieten. onPos z. B. für den Punkt auf der Karte. */
+export async function addFromLocation(onPos?: (p: Position) => void) {
+  toast(t('Standort wird bestimmt …'));
+  try {
+    const p = await locate();
+    onPos?.(p);
+    const idx = await loadCities();
+    const cc = countryAt(p.lon, p.lat) ?? nearbyCities(idx, p.lat, p.lon, 150, 1)[0]?.r[2] ?? null;
+    openAddPlace(p.lon, p.lat, cc, true);
+  } catch (e) {
+    toast((e as Error).message, true);
+  }
+}
+
+function AddPlaceSheet({ lon, lat, cc, here }: { lon: number; lat: number; cc: string; here?: boolean }) {
   const idx = useCities();
   const data = useData();
   const [picked, setPicked] = useState<CityRow | null>(null);
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const have = new Set(data.cities.map((c) => c.id));
-  const nearby = useMemo(() => {
-    if (!idx) return [];
-    const toRad = (d: number) => (d * Math.PI) / 180;
-    const dist = (r: CityRow) => {
-      const x = Math.sin(toRad(r[3] - lat) / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(r[3])) * Math.sin(toRad(r[4] - lon) / 2) ** 2;
-      return 12742 * Math.asin(Math.sqrt(x));
-    };
-    return idx.rows
-      .filter((r) => Math.abs(r[3] - lat) < 0.6 && Math.abs(r[4] - lon) < 0.9)
-      .map((r) => ({ r, km: dist(r) }))
-      .filter((x) => x.km <= 35)
-      .sort((a, b) => a.km - b.km)
-      .slice(0, 6);
-  }, [idx]);
+  const nearby = useMemo(() => (idx ? nearbyCities(idx, lat, lon, 35, 6) : []), [idx]);
 
   if (picked) return <VisitStep row={picked} onBack={() => setPicked(null)} />;
 
@@ -336,7 +351,7 @@ function AddPlaceSheet({ lon, lat, cc }: { lon: number; lat: number; cc: string 
         title={
           <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '28px' }}>{flag(cc)}</span>
-            {t('Ort hinzufügen')}
+            {here ? t('Dein Standort') : t('Ort hinzufügen')}
           </span>
         }
       />
@@ -347,22 +362,26 @@ function AddPlaceSheet({ lon, lat, cc }: { lon: number; lat: number; cc: string 
         {nearby.length > 0 && (
           <>
             <SectionTitle>{t('In der Nähe')}</SectionTitle>
-            <div class="list plain stagger">
-              {nearby.map(({ r, km }, i) => (
-                <Row
-                  key={r[0]}
-                  style={stagger(i)}
-                  lead={<Icon name={r[6] ? 'star' : 'building'} />}
-                  title={cityRowName(r)}
-                  sub={`${fmtPop(r[5])} · ${fmtInt(Math.round(km))} km`}
-                  trail={have.has(r[0]) ? <span class="badge ok">{t('dabei')}</span> : undefined}
-                  chevron
-                  onClick={() => {
-                    toggleCity(r, have.has(r[0]));
-                    closeSheet();
-                  }}
-                />
-              ))}
+            <div class="list plain">
+              {nearby.map(({ r, km }) => {
+                const on = have.has(r[0]);
+                return (
+                  <button key={r[0]} class={`row press press-row city-result ${on ? 'have' : ''}`} onClick={() => toggleCity(r, on)}>
+                    <div class="lead">
+                      <Icon name={r[6] ? 'star' : 'building'} />
+                    </div>
+                    <div class="main">
+                      <div class="t">{cityRowName(r)}</div>
+                      <div class="s">
+                        {fmtPop(r[5])} · {km < 1 ? t('hier') : `${fmtInt(Math.round(km))} km`}
+                      </div>
+                    </div>
+                    <span class={`add-toggle ${on ? 'on' : ''}`} aria-label={on ? t('Entfernen') : t('Hinzufügen')}>
+                      <Icon name={on ? 'check' : 'plus'} stroke={2.6} />
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </>
         )}
