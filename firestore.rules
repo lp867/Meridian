@@ -1,0 +1,21 @@
+rules_version = '2';
+// Sicherheitsregeln für Meridian (Firestore).
+// Jede Person darf nur ihr eigenes Dokument users/{uid} lesen, schreiben und löschen.
+// Das Dokument enthält die App-Daten als JSON-Text (data), den Stand (updatedAt) und die Version.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      allow read, delete: if request.auth != null && request.auth.uid == uid;
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['data', 'updatedAt', 'version'])
+        && request.resource.data.data is string
+        && request.resource.data.data.size() < 900000
+        && request.resource.data.updatedAt is int
+        && request.resource.data.version == 1;
+    }
+    // Alles andere ist gesperrt
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

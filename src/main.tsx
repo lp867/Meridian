@@ -6,7 +6,7 @@ import { loadStatic } from './lib/geo';
 import { dataStore, loadStores, metaStore, requestPersistence } from './lib/store';
 import { installSpringVars } from './lib/spring';
 import { installPressFeedback } from './ui/Toast';
-import { startAutoBackup } from './lib/github';
+import { initCloud } from './lib/cloud';
 import { migrateAirports } from './lib/importFv';
 import { applyLang } from './lib/i18n';
 import { applyTheme } from './lib/theme';
@@ -33,7 +33,7 @@ async function start() {
   splash?.classList.add('gone');
   setTimeout(() => splash?.remove(), 500);
   if (meta.onboarded) void requestPersistence();
-  startAutoBackup();
+  initCloud();
   void migrateAirports().catch(() => {});
 }
 

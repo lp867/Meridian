@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { emptyData, replaceData, requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
-import { backupToGithub, githubConfigured, restoreFromGithub } from '../lib/github';
+import { AccountSection, DeleteAccountButton, useAccount } from './Account';
 import { backupJson, downloadFile, parseBackup, toCsv } from '../lib/importFv';
 import { cityName, useDerived } from '../lib/derive';
 import { countriesSorted, countryName } from '../lib/geo';
@@ -22,8 +22,8 @@ export function ProfileScreen() {
   const meta = useMeta();
   const d = useDerived();
   const warn = useBackupWarning();
+  const acc = useAccount();
   const [persisted, setPersisted] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState<'' | 'backup' | 'restore'>('');
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -32,44 +32,6 @@ export function ProfileScreen() {
 
   const setSetting = <K extends keyof AppData['settings']>(k: K, v: AppData['settings'][K]) =>
     updateData((dd) => ({ ...dd, settings: { ...dd.settings, [k]: v } }));
-
-  const doBackup = async () => {
-    setBusy('backup');
-    try {
-      await backupToGithub();
-      toast(t('In GitHub gesichert'));
-    } catch (e) {
-      toast((e as Error).message, true);
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const doRestore = async () => {
-    setBusy('restore');
-    try {
-      const backup = await restoreFromGithub();
-      setBusy('');
-      const ok = await confirmSheet({
-        title: t('Sicherung laden?'),
-        text: t('Die Sicherung enthält {f}, {c} und {m}. Die Daten auf diesem Gerät werden ersetzt.', {
-          f: tn(backup.flights.length, 'Flug', 'Flüge'),
-          c: tn(backup.cities.length, 'Stadt', 'Städte'),
-          m: tn(backup.manualTrips.length, 'Reise ohne Flug', 'Reisen ohne Flug'),
-        }),
-        ok: t('Laden'),
-        danger: true,
-      });
-      if (!ok) return;
-      replaceData(backup);
-      updateMeta({ backedUpVersion: 0 });
-      toast(t('Sicherung geladen'));
-    } catch (e) {
-      toast((e as Error).message, true);
-    } finally {
-      setBusy('');
-    }
-  };
 
   const exportJson = () => {
     downloadFile(`meridian-backup-${todayYmd()}.json`, backupJson(data));
@@ -113,7 +75,10 @@ export function ProfileScreen() {
   const wipe = async () => {
     const ok = await confirmSheet({
       title: t('Alle Daten löschen?'),
-      text: t('Flüge, Länder, Städte und Reisen auf diesem Gerät werden gelöscht. Die GitHub-Sicherung bleibt bestehen.'),
+      text:
+        acc.status === 'signedIn'
+          ? t('Flüge, Länder, Städte und Reisen werden gelöscht – auf diesem Gerät und in deinem Konto.')
+          : t('Flüge, Länder, Städte und Reisen auf diesem Gerät werden gelöscht.'),
       ok: t('Alles löschen'),
       danger: true,
     });
@@ -155,6 +120,8 @@ export function ProfileScreen() {
           </div>
         ))}
       </div>
+
+      <AccountSection />
 
       <SectionTitle>{t('Darstellung')}</SectionTitle>
       <div style={{ margin: '0 16px' }}>
@@ -238,45 +205,13 @@ export function ProfileScreen() {
       </div>
       <p class="hint">{t('Touchdown zählt: Auch ein Land, in dem du nur umsteigst, gilt als besucht.')}</p>
 
-      <SectionTitle>{t('Sicherung in GitHub')}</SectionTitle>
-      <div class="list">
-        <Row
-          lead={<Icon name="cloud" />}
-          title={githubConfigured() ? (meta.lastBackupError ? t('Sicherung fehlgeschlagen') : t('Automatisch gesichert')) : t('Nicht eingerichtet')}
-          sub={
-            githubConfigured()
-              ? meta.lastBackupError || `${t('Zuletzt {t}', { t: fmtAgo(meta.lastBackupAt) })} · ${meta.githubRepo}`
-              : t('Privates Repo als Sicherung deiner Daten')
-          }
-          trail={githubConfigured() ? <span class={`badge ${meta.lastBackupError ? 'warn' : 'ok'}`}>{meta.lastBackupError ? t('Fehler') : t('aktiv')}</span> : undefined}
-          chevron
-          onClick={() => openSheet(() => <GithubSheet />, { tall: true })}
-        />
-        {githubConfigured() && (
-          <>
-            <div class="row">
-              <div class="lead">
-                <Icon name="refresh" />
-              </div>
-              <div class="main">
-                <div class="t">{t('Automatisch sichern')}</div>
-                <div class="s">{t('Kurz nach jeder Änderung')}</div>
-              </div>
-              <Toggle on={meta.autoBackup} onChange={(v) => updateMeta({ autoBackup: v })} />
-            </div>
-            <Row lead={<Icon name="upload" />} title={busy === 'backup' ? t('Sichere …') : t('Jetzt sichern')} onClick={busy ? undefined : doBackup} />
-            <Row lead={<Icon name="download" />} title={busy === 'restore' ? t('Lade …') : t('Sicherung aus GitHub laden')} onClick={busy ? undefined : doRestore} />
-          </>
-        )}
-      </div>
-
       <SectionTitle>{t('Sicherung als Datei')}</SectionTitle>
       <div class="list">
         <Row
           lead={<Icon name="upload" />}
           title={t('Sicherung speichern (JSON)')}
           sub={t('Zuletzt {t}', { t: fmtAgo(meta.lastExportAt) })}
-          trail={warn && !githubConfigured() ? <span class="badge day">{t('empfohlen')}</span> : undefined}
+          trail={warn ? <span class="badge day">{t('empfohlen')}</span> : undefined}
           onClick={exportJson}
         />
         <Row lead={<Icon name="download" />} title={t('Sicherung einspielen')} onClick={() => fileInput.current?.click()} />
@@ -322,7 +257,7 @@ export function ProfileScreen() {
         <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>,{' '}
         <a href="https://github.com/mledoze/countries" target="_blank" rel="noreferrer">mledoze/countries</a> (ODbL),{' '}
         <a href="https://github.com/mwgg/Airports" target="_blank" rel="noreferrer">mwgg/Airports</a> (MIT), Twemoji (CC BY 4.0).{' '}
-        {t('Alle Daten bleiben auf deinem Gerät.')}
+        {t('Ohne Konto bleiben alle Daten auf deinem Gerät. Mit Konto werden sie verschlüsselt übertragen und bei Google Firebase in Zürich gespeichert.')}
       </p>
 
       <div style={{ margin: '24px 16px 0' }}>
@@ -330,6 +265,7 @@ export function ProfileScreen() {
           <Icon name="trash" /> {t('Alle Daten löschen')}
         </button>
       </div>
+      <DeleteAccountButton />
     </>
   );
 }
@@ -352,75 +288,6 @@ function NameSheet() {
         <div class="sheet-actions">
           <button class="btn primary press" onClick={save}>
             {t('Speichern')}
-          </button>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function GithubSheet() {
-  const meta = useMeta();
-  const [repo, setRepo] = useState(meta.githubRepo);
-  const [token, setToken] = useState(meta.githubToken);
-  const [path, setPath] = useState(meta.githubPath);
-  const [busy, setBusy] = useState(false);
-  const valid = /^[\w.-]+\/[\w.-]+$/.test(repo.trim()) && token.trim().length > 10 && path.trim().length > 0;
-
-  const save = async () => {
-    updateMeta({ githubRepo: repo.trim(), githubToken: token.trim(), githubPath: path.trim(), lastBackupError: '' });
-    setBusy(true);
-    try {
-      await backupToGithub();
-      toast(t('Verbunden und gesichert'));
-      closeSheet();
-    } catch (e) {
-      toast((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <>
-      <SheetHeader title={t('GitHub-Sicherung')} />
-      <div class="sheet-body">
-        <p class="hint" style={{ margin: '0 20px 16px', fontSize: '14px', color: 'var(--text2)' }}>
-          {t('Deine Daten werden als Datei in ein privates Repo geschrieben. Der Token bleibt nur auf diesem Gerät.')}
-        </p>
-        <label class="field">
-          <span>{t('Repo (benutzer/name)')}</span>
-          <input value={repo} placeholder={t('benutzer/meridian-backup')} autoCapitalize="off" spellcheck={false} onInput={(e) => setRepo((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <label class="field">
-          <span>{t('Zugriffstoken')}</span>
-          <input type="password" value={token} placeholder="github_pat_…" autoComplete="off" onInput={(e) => setToken((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <label class="field">
-          <span>{t('Dateiname')}</span>
-          <input value={path} autoCapitalize="off" spellcheck={false} onInput={(e) => setPath((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <div class="card" style={{ fontSize: '13.5px', color: 'var(--text2)', lineHeight: 1.55 }}>
-          <b style={{ color: 'var(--text)' }}>{t('So erstellst du den Token')}</b>
-          <br />
-          {t(
-            'GitHub → Settings → Developer settings → Fine-grained tokens → Generate new token. Unter «Repository access» nur dein Sicherungs-Repo wählen, bei «Permissions» → Contents auf «Read and write» setzen.',
-          )}
-        </div>
-        <div class="sheet-actions" style={{ marginTop: '16px' }}>
-          {meta.githubToken && (
-            <button
-              class="btn danger press"
-              onClick={() => {
-                updateMeta({ githubToken: '', lastBackupError: '' });
-                closeSheet();
-              }}
-            >
-              {t('Trennen')}
-            </button>
-          )}
-          <button class="btn primary press" disabled={!valid || busy} onClick={save}>
-            {busy ? t('Verbinde …') : t('Verbinden')}
           </button>
         </div>
       </div>

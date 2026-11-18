@@ -4,14 +4,16 @@ import { VitePWA } from 'vite-plugin-pwa';
 import pkg from './package.json' with { type: 'json' };
 
 // Content-Security-Policy nur im fertigen Build (der Dev-Server braucht mehr Freiheiten).
-// Erlaubt Skripte, Schriften und Daten nur von der eigenen Adresse; Netzwerk nur zur GitHub-API.
+// Erlaubt Skripte, Schriften und Daten nur von der eigenen Adresse; Netzwerk nur zu Firebase (Google).
+// Google-Anmeldung braucht zusätzlich apis.google.com (Skript) und den Anmelde-Rahmen von firebaseapp.com.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self'",
+  "script-src 'self' https://apis.google.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  "connect-src 'self' https://api.github.com",
+  "connect-src 'self' https://*.googleapis.com",
+  "frame-src https://*.firebaseapp.com https://accounts.google.com",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",

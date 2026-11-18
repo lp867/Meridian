@@ -11,14 +11,15 @@ Reise-Tracker als Web-App: besuchte Länder, Städte, Trips und Flüge auf einer
 - Trips entstehen automatisch aus Flügen; Tagesausflüge, Umstiege und Bodenstrecken werden erkannt
 - Flugliste, Statistik, Routenkarte und Flugzeug-Sammlung
 - Import von FlightVault-Exporten (CSV)
+- Optionales Konto (E-Mail oder Google) mit Synchronisierung zwischen Geräten
 - Deutsch, Englisch, Französisch und Spanisch; heller und dunkler Modus
 
 ## Datenschutz
 
-Alle Daten bleiben im Browser auf deinem Gerät. Die App hat keinen Server und schickt nichts weg.
-Optional kann sie deine Daten als Datei in ein **eigenes, privates** GitHub-Repo sichern (in öffentliche Repos sichert sie aus Datenschutzgründen nicht). Dafür braucht es einen
-Fine-grained Token, der nur Zugriff auf dieses eine Repo hat (Contents: Read and write). Der Token bleibt auf dem Gerät
-und ist nie Teil einer Sicherung.
+Ohne Konto bleiben alle Daten im Browser auf deinem Gerät. Mit einem (kostenlosen) Konto werden sie verschlüsselt
+übertragen und bei Google Firebase in Zürich (europe-west6) gespeichert, damit sie auf allen Geräten verfügbar sind.
+Jede Person kann nur ihre eigenen Daten lesen (siehe `firestore.rules`). Konto und Cloud-Daten lassen sich in der App
+jederzeit löschen.
 
 ## Installieren
 

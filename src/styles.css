@@ -2127,3 +2127,102 @@ svg {
   gap: 8px;
   margin: 2px 0 6px;
 }
+
+/* ---------- Konto & Anmeldung (grosse, gut lesbare Felder) ---------- */
+.auth-google {
+  height: 54px;
+  font-size: 16.5px;
+  gap: 12px;
+}
+.auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 20px 14px;
+  font-size: 13.5px;
+  color: var(--text3);
+}
+.auth-or::before,
+.auth-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--sep);
+}
+.field.big > span {
+  font-size: 14.5px;
+}
+.field.big input {
+  font-size: 17.5px;
+  padding: 15px 16px;
+  min-height: 54px;
+}
+.pw-wrap {
+  position: relative;
+}
+.pw-wrap input {
+  padding-right: 96px;
+}
+.pw-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.auth-msg {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0 20px 12px;
+  font-size: 14.5px;
+  line-height: 1.4;
+}
+.auth-msg svg {
+  flex: none;
+  margin-top: 1px;
+}
+.auth-msg.err {
+  color: var(--danger);
+}
+.auth-msg.ok {
+  color: var(--ok);
+}
+.auth-submit {
+  height: 54px;
+  font-size: 17px;
+}
+.account-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.account-cta b {
+  font-size: 17px;
+  font-weight: 700;
+}
+.account-cta p {
+  margin: 0 0 8px;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--text2);
+}
+.account-cta-ico {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-tint);
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.account-cta-ico svg {
+  width: 22px;
+  height: 22px;
+}

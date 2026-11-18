@@ -108,17 +108,16 @@ export interface AppData {
   updatedAt: number;
 }
 
-/** Lokale Einstellungen, die nicht ins Backup gehören (Token!). */
+/** Geräteeinstellungen, die nicht ins Konto synchronisiert werden. */
 export interface Meta {
-  githubRepo: string;
-  githubToken: string;
-  githubPath: string;
-  autoBackup: boolean;
-  lastBackupAt: number;
-  lastBackupError: string;
   lastExportAt: number;
-  backedUpVersion: number; // updatedAt der zuletzt gesicherten Daten
   onboarded: boolean;
+  accountUid: string; // angemeldetes Konto (leer = ohne Konto)
+  accountEmail: string;
+  syncRemote: number; // Stand (updatedAt) der Cloud bei der letzten Synchronisierung
+  syncLocal: number; // Stand der Gerätedaten bei der letzten Synchronisierung
+  lastSyncAt: number;
+  syncError: string;
   lang: 'de' | 'en' | 'fr' | 'es';
   theme: 'system' | 'dark' | 'light';
 }

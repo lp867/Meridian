@@ -17,6 +17,7 @@
     "d3-interpolate": "^3.0.2",
     "d3-selection": "^3.0.1",
     "d3-zoom": "^3.0.1",
+    "firebase": "^13.4.0",
     "idb-keyval": "^6.3.0",
     "papaparse": "^5.7.1",
     "preact": "^11.2.0"

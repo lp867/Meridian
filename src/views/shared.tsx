@@ -5,7 +5,7 @@ import { SheetHeader, closeSheet, openSheet } from '../ui/Sheet';
 import { countriesSorted, countryName, loadCities, type CityIndex } from '../lib/geo';
 import { flag, normalize } from '../lib/format';
 import { useMeta, useData } from '../lib/store';
-import { githubConfigured } from '../lib/github';
+import { getAccount } from '../lib/cloud';
 import { t } from '../lib/i18n';
 
 export function useCities(): CityIndex | null {
@@ -24,7 +24,7 @@ export function useBackupWarning() {
   const data = useData();
   const hasData = data.flights.length + data.cities.length + Object.keys(data.countries).length + data.manualTrips.length > 0;
   if (!hasData) return false;
-  if (githubConfigured()) return !!meta.lastBackupError;
+  if (getAccount().status === 'signedIn') return !!meta.syncError;
   return Date.now() - meta.lastExportAt > 14 * 86400000;
 }
 

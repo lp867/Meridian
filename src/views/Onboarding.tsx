@@ -3,7 +3,8 @@ import { replaceData, requestPersistence, updateData, updateMeta, useData, useMe
 import { countriesSorted, countryName, getStatic } from '../lib/geo';
 import { flag, fmtInt, normalize } from '../lib/format';
 import { importFlightVault, parseBackup } from '../lib/importFv';
-import { restoreFromGithub } from '../lib/github';
+import { cloudAvailable } from '../lib/cloud';
+import { openAuth, useAccount } from './Account';
 import { derive } from '../lib/derive';
 import { LANGS, t, tn, type Lang } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
@@ -83,7 +84,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
         {[
           { icon: 'globe', t: t('Weltkarte'), s: t('Besuchte Länder und Städte auf einen Blick') },
           { icon: 'suitcase', t: t('Trips von selbst'), s: t('Aus deinen Flügen entstehen automatisch Reisen') },
-          { icon: 'shield', t: t('Deine Daten bleiben bei dir'), s: t('Alles lokal, Sicherung auf Wunsch in GitHub') },
+          { icon: 'shield', t: t('Deine Daten bleiben bei dir'), s: t('Ohne Konto alles auf dem Gerät, mit Konto auf allen Geräten') },
         ].map((f, n) => (
           <div class="onb-feature" style={{ '--i': String(n + 2) }}>
             <div class="lead">
@@ -223,6 +224,7 @@ function CitiesStep({ onNext }: { onNext: () => void }) {
 // ---------- 4. Daten ----------
 function DataStep({ onNext }: { onNext: () => void }) {
   const data = useData();
+  const acc = useAccount();
   const csv = useRef<HTMLInputElement>(null);
   const json = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -259,10 +261,37 @@ function DataStep({ onNext }: { onNext: () => void }) {
           <Icon name="download" />
         </div>
         <h1>{t('Hast du schon Reisedaten?')}</h1>
-        <p>{t('Importiere deine Flüge oder eine Sicherung. Du kannst auch leer starten und Länder auf der Karte antippen.')}</p>
+        <p>{t('Melde dich an, importiere deine Flüge oder starte einfach so und tippe Länder auf der Karte an.')}</p>
       </div>
       <div class="onb-cards stagger">
-        <button class="onb-option big press" style={{ '--i': '0', '--press': '0.985' }} disabled={busy} onClick={() => csv.current?.click()}>
+        {cloudAvailable &&
+          (acc.status === 'signedIn' ? (
+            <div class="onb-option big on" style={{ '--i': '0' }}>
+              <span class="lead">
+                <Icon name="check" />
+              </span>
+              <span class="grow">
+                <b>{t('Angemeldet')}</b>
+                <span>{acc.email}</span>
+              </span>
+            </div>
+          ) : (
+            <button
+              class="onb-option big press"
+              style={{ '--i': '0', '--press': '0.985' }}
+              onClick={() => openAuth('signup', () => setDone(t('Angemeldet – deine Reisen werden gesichert')))}
+            >
+              <span class="lead">
+                <Icon name="user" />
+              </span>
+              <span class="grow">
+                <b>{t('Konto erstellen oder anmelden')}</b>
+                <span>{t('Reisen sichern und auf allen Geräten sehen – auch wenn du Meridian schon nutzt')}</span>
+              </span>
+              <Icon name="chevR" size={16} />
+            </button>
+          ))}
+        <button class="onb-option big press" style={{ '--i': '1', '--press': '0.985' }} disabled={busy} onClick={() => csv.current?.click()}>
           <span class="lead">
             <Icon name="plane" />
           </span>
@@ -272,23 +301,13 @@ function DataStep({ onNext }: { onNext: () => void }) {
           </span>
           <Icon name="chevR" size={16} />
         </button>
-        <button class="onb-option big press" style={{ '--i': '1', '--press': '0.985' }} onClick={() => json.current?.click()}>
+        <button class="onb-option big press" style={{ '--i': '2', '--press': '0.985' }} onClick={() => json.current?.click()}>
           <span class="lead">
             <Icon name="file" />
           </span>
           <span class="grow">
             <b>{t('Sicherungsdatei')}</b>
             <span>{t('Eine Meridian-Sicherung (JSON)')}</span>
-          </span>
-          <Icon name="chevR" size={16} />
-        </button>
-        <button class="onb-option big press" style={{ '--i': '2', '--press': '0.985' }} onClick={() => openSheet(() => <GithubRestore onDone={setDone} />, { tall: true })}>
-          <span class="lead">
-            <Icon name="cloud" />
-          </span>
-          <span class="grow">
-            <b>{t('Aus GitHub laden')}</b>
-            <span>{t('Wenn du Meridian schon auf einem anderen Gerät nutzt')}</span>
           </span>
           <Icon name="chevR" size={16} />
         </button>
@@ -302,55 +321,10 @@ function DataStep({ onNext }: { onNext: () => void }) {
       <input ref={json} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => importJson((e.currentTarget as HTMLInputElement).files)} />
       <div class="onb-actions">
         <button class="btn primary block press" onClick={onNext}>
-          {done || data.flights.length ? t('Weiter') : t('Leer starten')}
+          {done || data.flights.length || acc.status === 'signedIn' ? t('Weiter') : t('Ohne Daten starten')}
         </button>
       </div>
     </div>
-  );
-}
-
-function GithubRestore({ onDone }: { onDone: (msg: string) => void }) {
-  const meta = useMeta();
-  const [repo, setRepo] = useState(meta.githubRepo);
-  const [token, setToken] = useState(meta.githubToken);
-  const [busy, setBusy] = useState(false);
-  const load = async () => {
-    updateMeta({ githubRepo: repo.trim(), githubToken: token.trim() });
-    setBusy(true);
-    try {
-      const backup = await restoreFromGithub();
-      replaceData(backup);
-      updateMeta({ backedUpVersion: 0 });
-      onDone(t('Sicherung geladen: {f}, {c}', { f: tn(backup.flights.length, 'Flug', 'Flüge'), c: tn(backup.cities.length, 'Stadt', 'Städte') }));
-      closeSheet();
-    } catch (e) {
-      toast((e as Error).message, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <>
-      <SheetHeader title={t('Aus GitHub laden')} />
-      <div class="sheet-body">
-        <label class="field">
-          <span>{t('Repo (benutzer/name)')}</span>
-          <input value={repo} placeholder={t('benutzer/meridian-backup')} autoCapitalize="off" spellcheck={false} onInput={(e) => setRepo((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <label class="field">
-          <span>{t('Zugriffstoken')}</span>
-          <input type="password" value={token} placeholder="github_pat_…" autoComplete="off" onInput={(e) => setToken((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <p class="hint" style={{ marginTop: 0 }}>
-          {t('Danach sichert Meridian Änderungen automatisch in dieses Repo.')}
-        </p>
-        <div class="sheet-actions" style={{ marginTop: '14px' }}>
-          <button class="btn primary press" disabled={busy || !repo.includes('/') || token.length < 10} onClick={load}>
-            {busy ? t('Lade …') : t('Laden')}
-          </button>
-        </div>
-      </div>
-    </>
   );
 }
 

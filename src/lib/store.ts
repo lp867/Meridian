@@ -34,17 +34,16 @@ export const emptyData = (): AppData => ({
 });
 
 const emptyMeta = (): Meta => ({
-  githubRepo: '',
-  githubToken: '',
-  githubPath: 'meridian-backup.json',
-  autoBackup: true,
-  lastBackupAt: 0,
-  lastBackupError: '',
   lastExportAt: 0,
-  backedUpVersion: 0,
   onboarded: false,
   lang: guessLang(),
   theme: 'dark',
+  accountUid: '',
+  accountEmail: '',
+  syncRemote: 0,
+  syncLocal: 0,
+  lastSyncAt: 0,
+  syncError: '',
 });
 
 /** Kleiner Store mit Abonnenten – reicht für eine App dieser Grösse. */
@@ -100,6 +99,14 @@ export function replaceData(next: AppData) {
   updateData(() => merged);
 }
 
+/** Übernimmt Daten aus der Cloud, ohne erneut eine Synchronisierung auszulösen. */
+export function setDataFromSync(next: AppData) {
+  const merged = { ...emptyData(), ...next, settings: { ...emptyData().settings, ...next.settings } };
+  dataStore.set(merged);
+  clearTimeout(saveTimer);
+  void set('data', merged);
+}
+
 export function updateMeta(patch: Partial<Meta>) {
   const next = { ...metaStore.get(), ...patch };
   metaStore.set(next);
@@ -110,7 +117,14 @@ export async function loadStores() {
   let [d, m] = await Promise.all([get<AppData>('data'), get<Meta>('meta')]);
   if (!d && !m) [d, m] = await migrateLegacyStore();
   if (d) dataStore.set({ ...emptyData(), ...d, settings: { ...emptyData().settings, ...d.settings } });
-  if (m) metaStore.set({ ...emptyMeta(), ...m });
+  if (m) {
+    // Überbleibsel der früheren GitHub-Sicherung (inkl. Token) entfernen
+    const { githubToken, githubRepo, githubPath, autoBackup, lastBackupAt, lastBackupError, backedUpVersion, ...rest } = m as Meta & Record<string, unknown>;
+    const cleaned = { ...emptyMeta(), ...rest } as Meta;
+    metaStore.set(cleaned);
+    if (githubToken !== undefined) void set('meta', cleaned);
+    void [githubRepo, githubPath, autoBackup, lastBackupAt, lastBackupError, backedUpVersion];
+  }
 }
 
 /** Bittet den Browser, die Daten nicht bei Speicherknappheit zu löschen. */
