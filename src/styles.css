@@ -2502,3 +2502,238 @@ svg {
     0 10px 28px rgba(20, 30, 50, 0.16),
     0 2px 6px rgba(20, 30, 50, 0.08);
 }
+
+/* ---------- Länder-Tab: kompakt fürs Handy ---------- */
+.tab-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(var(--safe-t) + 14px) 16px 10px 20px;
+}
+.tab-head h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 760;
+  letter-spacing: -0.03em;
+}
+.tab-head .icon-btn {
+  width: 40px;
+  height: 40px;
+}
+.overview {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 16px;
+  padding: 12px 16px;
+  border-radius: var(--r-lg);
+  background-color: var(--s1);
+  background-image: var(--sheen);
+  box-shadow: var(--rim);
+}
+.ov-ring {
+  position: relative;
+  flex: none;
+  width: 62px;
+  height: 62px;
+}
+.ov-ring > span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 14px;
+  font-weight: 720;
+}
+.ov-stats {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+}
+.ov-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+.ov-stats > div + div {
+  border-left: 1px solid var(--sep);
+}
+.ov-stats b {
+  font-size: 22px;
+  font-weight: 740;
+  letter-spacing: -0.02em;
+}
+.ov-stats b small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text3);
+  margin-left: 1px;
+}
+.ov-stats span {
+  font-size: 12px;
+  color: var(--text2);
+}
+.seg-wrap {
+  margin: 12px 16px 10px;
+}
+.inline-search {
+  margin: 0 0 10px;
+  animation: fade-in 0.16s ease both;
+}
+.chips {
+  padding: 2px 16px 6px;
+}
+.chip-sort {
+  margin-left: auto;
+  color: var(--text2);
+}
+.group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 16px 22px 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text2);
+}
+.group-head .num {
+  color: var(--text3);
+}
+.list.compact .row {
+  min-height: 52px;
+  padding: 8px 14px;
+  gap: 12px;
+}
+.list.compact .row .lead.flag {
+  font-size: 25px;
+  width: 30px;
+}
+.list.compact .row .lead:not(.flag) {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.list.compact .row .t {
+  font-size: 15.5px;
+}
+.list.compact .row .s {
+  font-size: 13px;
+  margin-top: 1px;
+}
+.list.compact > .row + .row::before {
+  left: 56px;
+}
+.dot-status {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+.dot-status.v {
+  background: var(--visited);
+}
+.dot-status.w {
+  background: var(--wish);
+}
+
+/* ---------- Städte: schnell hinzufügen ---------- */
+.quick-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 48px;
+  margin: 0 16px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: var(--accent-tint);
+  box-shadow: inset 0 0 0 1px rgba(90, 162, 255, 0.35);
+  color: var(--accent);
+  transition: box-shadow 0.2s ease;
+}
+.quick-add:focus-within {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+.quick-add > svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+.quick-add input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: none;
+  font-size: 16px;
+  color: var(--text);
+}
+.quick-add input::placeholder {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.quick-add .clear {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--s4);
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+.quick-add .clear svg {
+  width: 13px;
+  height: 13px;
+}
+.qa-results {
+  margin-top: 8px;
+}
+.add-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex: none;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  background: var(--accent-tint);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+.add-toggle svg {
+  width: 17px;
+  height: 17px;
+}
+.add-toggle.on {
+  color: #fff;
+  background: var(--ok);
+}
+.suggest-chips {
+  flex-wrap: nowrap;
+}
+.chip.suggest {
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+}
+.suggest-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 6px 0 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.suggest-x {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 34px;
+  color: var(--text3);
+}
+.city-summary {
+  margin: 14px 22px 0;
+}

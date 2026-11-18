@@ -2,7 +2,7 @@ import { useMemo, useState } from 'preact/hooks';
 import { updateData, useData } from '../lib/store';
 import { cityName, citySuggestions, useDerived } from '../lib/derive';
 import { cityRowName, cityRowNames, countryName, type CityRow } from '../lib/geo';
-import { flag, fmtDate, fmtInt, fmtPop, fmtRange } from '../lib/format';
+import { flag, fmtDate, fmtInt, fmtPop, fmtRange, normalize } from '../lib/format';
 import { getLang, t, tn } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
 import { Empty, Row, SearchField, SectionTitle, stagger } from '../ui/kit';
@@ -34,7 +34,78 @@ function addCity(row: CityRow, visit: CityVisit) {
   });
 }
 
-export function CitiesPanel() {
+/** Stadt hinzufügen oder (bei erneutem Tippen) wieder entfernen. */
+export function toggleCity(row: CityRow, have: boolean) {
+  if (have) {
+    updateData((d) => ({ ...d, cities: d.cities.filter((c) => c.id !== row[0]) }));
+    toast(t('{c} entfernt', { c: cityRowName(row) }));
+  } else {
+    addCity(row, {});
+    toast(t('{c} hinzugefügt', { c: cityRowName(row) }));
+  }
+}
+
+/** Trefferzeile: ein Tipp fügt hinzu, das Häkchen zeigt, was schon dabei ist. */
+export function CityResult({ r, have }: { r: CityRow; have: boolean }) {
+  const shown = cityRowName(r);
+  return (
+    <button class={`row press press-row city-result ${have ? 'have' : ''}`} onClick={() => toggleCity(r, have)}>
+      <div class="lead flag">{flag(r[2])}</div>
+      <div class="main">
+        <div class="t">{shown}</div>
+        <div class="s">{[countryName(r[2]), fmtPop(r[5]), r[6] ? t('Hauptstadt') : ''].filter(Boolean).join(' · ')}</div>
+      </div>
+      <span class={`add-toggle ${have ? 'on' : ''}`} aria-label={have ? t('Entfernen') : t('Hinzufügen')}>
+        <Icon name={have ? 'check' : 'plus'} stroke={2.6} />
+      </span>
+    </button>
+  );
+}
+
+/** Suchfeld direkt in der Städteliste: tippen, antippen, fertig. */
+function QuickAdd() {
+  const data = useData();
+  const idx = useCities();
+  const [q, setQ] = useState('');
+  const threshold = data.settings.cityThreshold;
+  const results = useMemo(() => {
+    if (!idx || !q.trim()) return [];
+    const all = idx.search(q, 0);
+    return [...all.filter((r) => r[5] >= threshold || r[6]), ...all.filter((r) => r[5] < threshold && !r[6])].slice(0, 12);
+  }, [idx, q, threshold]);
+  const have = new Set(data.cities.map((c) => c.id));
+  return (
+    <>
+      <label class="quick-add">
+        <Icon name="plus" stroke={2.4} />
+        <input
+          value={q}
+          placeholder={t('Stadt hinzufügen …')}
+          enterKeyHint="search"
+          autoComplete="off"
+          spellcheck={false}
+          onInput={(e) => setQ((e.currentTarget as HTMLInputElement).value)}
+        />
+        {q && (
+          <button class="clear" onClick={() => setQ('')} aria-label={t('Leeren')}>
+            <Icon name="x" stroke={2.6} />
+          </button>
+        )}
+      </label>
+      {q.trim() && (
+        <div class="list compact qa-results">
+          {!idx && <p class="hint">{t('Städte werden geladen …')}</p>}
+          {results.map((r) => (
+            <CityResult key={r[0]} r={r} have={have.has(r[0])} />
+          ))}
+          {idx && !results.length && <p class="hint">{t('Halte auf der Karte den Finger auf den Ort gedrückt, um ihn selbst hinzuzufügen.')}</p>}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function CitiesPanel({ q = '' }: { q?: string }) {
   const data = useData();
   const d = useDerived();
   const idx = useCities();
@@ -47,86 +118,86 @@ export function CitiesPanel() {
   }, [idx, data, d]);
 
   const groups = useMemo(() => {
+    const n = normalize(q);
     const by = new Map<string, City[]>();
-    for (const c of data.cities) by.set(c.cc, [...(by.get(c.cc) ?? []), c]);
+    for (const c of data.cities) {
+      if (n && !normalize(`${cityName(c)} ${c.name} ${countryName(c.cc)}`).includes(n)) continue;
+      by.set(c.cc, [...(by.get(c.cc) ?? []), c]);
+    }
     const lang = getLang();
     return [...by.entries()]
       .map(([cc, list]) => ({ cc, name: countryName(cc), list: list.sort((a, b) => cityName(a).localeCompare(cityName(b), lang)) }))
       .sort((a, b) => b.list.length - a.list.length || a.name.localeCompare(b.name, lang));
-  }, [data.cities, d]);
+  }, [data.cities, q, d]);
+
+  const capitals = data.cities.filter((c) => c.capital).length;
+  const countries = new Set(data.cities.map((c) => c.cc)).size;
 
   return (
     <>
-      <div style={{ margin: '0 16px' }}>
-        <button class="btn primary block press" onClick={() => openCityAdd()}>
-          <Icon name="plus" stroke={2.4} /> {t('Stadt hinzufügen')}
-        </button>
-      </div>
+      {!q && <QuickAdd />}
 
-      {suggestions.length > 0 && (
+      {!q && suggestions.length > 0 && (
         <>
-          <SectionTitle>{t('Vorschläge aus deinen Flügen')}</SectionTitle>
-          <div class="list stagger">
-            {suggestions.slice(0, 8).map(({ s, row }, i) => (
-              <div class="row" style={stagger(i)} key={row[0]}>
-                <div class="lead flag">{flag(row[2])}</div>
-                <div class="main">
-                  <div class="t">{cityRowName(row)}</div>
-                  <div class="s">
-                    {s.airport} · {fmtDate(s.date)}
-                  </div>
-                </div>
-                <div class="trail" style={{ gap: '8px' }}>
-                  <button
-                    class="icon-btn press"
-                    style={{ width: '36px', height: '36px', background: 'var(--s3)' }}
-                    aria-label={t('Ignorieren')}
-                    onClick={() => updateData((dd) => ({ ...dd, dismissedSuggestions: [...dd.dismissedSuggestions, row[0]] }))}
-                  >
-                    <Icon name="x" size={17} stroke={2.4} />
-                  </button>
-                  <button
-                    class="icon-btn press"
-                    style={{ width: '36px', height: '36px', background: 'var(--accent-deep)', color: 'white' }}
-                    aria-label={t('Übernehmen')}
-                    onClick={() => {
-                      addCity(row, { date: s.date, tripId: s.tripId });
-                      toast(t('{c} hinzugefügt', { c: cityRowName(row) }));
-                    }}
-                  >
-                    <Icon name="check" size={17} stroke={2.8} />
-                  </button>
-                </div>
-              </div>
+          <div class="group-head">
+            <span>{t('Vorschläge aus deinen Flügen')}</span>
+          </div>
+          <div class="chips suggest-chips">
+            {suggestions.slice(0, 12).map(({ s, row }) => (
+              <span class="chip suggest" key={row[0]}>
+                <button
+                  class="suggest-add press"
+                  onClick={() => {
+                    addCity(row, { date: s.date, tripId: s.tripId });
+                    toast(t('{c} hinzugefügt', { c: cityRowName(row) }));
+                  }}
+                >
+                  <Icon name="plus" size={14} stroke={2.6} /> {flag(row[2])} {cityRowName(row)}
+                </button>
+                <button
+                  class="suggest-x"
+                  aria-label={t('Ignorieren')}
+                  onClick={() => updateData((dd) => ({ ...dd, dismissedSuggestions: [...dd.dismissedSuggestions, row[0]] }))}
+                >
+                  <Icon name="x" size={13} stroke={2.6} />
+                </button>
+              </span>
             ))}
           </div>
-          {suggestions.length > 8 && <p class="hint">{t('und {n} weitere', { n: suggestions.length - 8 })}</p>}
         </>
       )}
 
-      {!data.cities.length && !suggestions.length && (
+      {!q && data.cities.length > 0 && (
+        <p class="hint city-summary">
+          {tn(data.cities.length, 'Stadt', 'Städte')} · {tn(countries, 'Land', 'Länder')} · {tn(capitals, 'Hauptstadt', 'Hauptstädte')}
+        </p>
+      )}
+
+      {!data.cities.length && !suggestions.length && !q && (
         <Empty
           icon="building"
           title={t('Noch keine Städte')}
-          text={t('Füge Städte hinzu, die du besucht hast. Es zählen Städte ab {n} Einwohnern und alle Hauptstädte.', { n: fmtInt(data.settings.cityThreshold) })}
+          text={t('Tippe oben eine Stadt ein und wähle sie aus. Es zählen Städte ab {n} Einwohnern und alle Hauptstädte.', { n: fmtInt(data.settings.cityThreshold) })}
         />
       )}
+      {q && !groups.length && <Empty icon="search" title={t('Nichts gefunden')} text={t('Keine deiner Städte passt zu «{q}».', { q })} />}
 
       {groups.map((g) => (
         <div key={g.cc}>
-          <SectionTitle>
-            {flag(g.cc)} {g.name}
-            <span style={{ marginLeft: '8px', color: 'var(--text3)' }}>{g.list.length}</span>
-          </SectionTitle>
-          <div class="list stagger">
-            {g.list.map((c, i) => {
+          <div class="group-head">
+            <span>
+              {flag(g.cc)} {g.name}
+            </span>
+            <span class="num">{g.list.length}</span>
+          </div>
+          <div class="list compact">
+            {g.list.map((c) => {
               const dates = c.visits.map((v) => v.date).filter(Boolean) as string[];
               return (
                 <Row
-                  style={stagger(i)}
-                  lead={<Icon name={c.capital ? 'star' : 'building'} />}
+                  lead={<Icon name={c.capital ? 'star' : c.pop ? 'building' : 'pin'} />}
                   title={cityName(c)}
-                  sub={[c.pop ? fmtPop(c.pop) : t('Eigener Ort'), c.capital ? t('Hauptstadt') : '', dates.length ? fmtDate(dates.sort().at(-1)) : ''].filter(Boolean).join(' · ')}
+                  sub={[c.pop ? fmtPop(c.pop) : t('Eigener Ort'), dates.length ? fmtDate(dates.sort().at(-1)) : ''].filter(Boolean).join(' · ')}
                   trail={c.visits.length > 1 ? <span class="badge">{c.visits.length}×</span> : undefined}
                   chevron
                   onClick={() => openCity(c.id)}
@@ -162,22 +233,7 @@ function CityAddSheet({ cc }: { cc?: string }) {
 
   if (picked) return <VisitStep row={picked} onBack={() => setPicked(null)} />;
 
-  const row = (r: CityRow, i: number) => {
-    const shown = cityRowName(r);
-    return (
-      <Row
-        key={r[0]}
-        style={stagger(i)}
-        lead={flag(r[2])}
-        leadClass="flag"
-        title={shown}
-        sub={[countryName(r[2]), fmtPop(r[5]), r[6] ? t('Hauptstadt') : '', shown !== r[1] ? r[1] : ''].filter(Boolean).join(' · ')}
-        trail={have.has(r[0]) ? <span class="badge ok">{t('dabei')}</span> : undefined}
-        chevron
-        onClick={() => setPicked(r)}
-      />
-    );
-  };
+  const row = (r: CityRow) => <CityResult key={r[0]} r={r} have={have.has(r[0])} />;
 
   return (
     <>
@@ -288,7 +344,10 @@ function AddPlaceSheet({ lon, lat, cc }: { lon: number; lat: number; cc: string 
                   sub={`${fmtPop(r[5])} · ${fmtInt(Math.round(km))} km`}
                   trail={have.has(r[0]) ? <span class="badge ok">{t('dabei')}</span> : undefined}
                   chevron
-                  onClick={() => setPicked(r)}
+                  onClick={() => {
+                    toggleCity(r, have.has(r[0]));
+                    closeSheet();
+                  }}
                 />
               ))}
             </div>

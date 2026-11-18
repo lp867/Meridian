@@ -5,7 +5,7 @@ import { CONTINENTS, continentName, countriesSorted, countryName, getStatic, pro
 import { flag, fmtDate, fmtInt, fmtMonthYear, fmtRange, normalize } from '../lib/format';
 import { t, tn, tw } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
-import { Chip, Empty, LargeTitle, NavBar, Progress, Row, SearchField, SectionTitle, Segmented, Swap, stagger } from '../ui/kit';
+import { Chip, Empty, NavBar, Progress, Ring, Row, SearchField, SectionTitle, Segmented, Swap, stagger } from '../ui/kit';
 import { SheetHeader } from '../ui/Sheet';
 import { useNav, type Nav } from '../ui/Stack';
 import { MiniMap, type Box } from '../ui/WorldMap';
@@ -261,30 +261,41 @@ export function NoteCard({ value, onSave, placeholder }: { value: string; onSave
 }
 
 // ---------- Tab "Länder" ----------
-type Filter = 'all' | 'visited' | 'wish';
-type Sort = 'az' | 'continent' | 'date';
+type Filter = 'visited' | 'wish' | 'all';
+type Sort = 'continent' | 'az' | 'date';
+type Mode = 'countries' | 'cities' | 'goals';
 const SORT_LABEL: Record<Sort, string> = { az: 'A–Z', continent: 'Kontinent', date: 'Datum' };
 
 export function CountriesScreen() {
   const d = useDerived();
   const data = useData();
   const nav = useNav();
-  const st = getStatic();
-  const [mode, setMode] = useState<'countries' | 'cities' | 'goals'>('countries');
-  const pct = Math.round((d.visitedCount / st.countableTotal) * 100);
+  const [mode, setMode] = useState<Mode>('countries');
+  const [searching, setSearching] = useState(false);
+  const [q, setQ] = useState('');
+  const closeSearch = () => {
+    setSearching(false);
+    setQ('');
+  };
 
   return (
     <>
-      <NavBar title={t('Länder')} />
-      <LargeTitle
-        sub={`${t('{n} von {total} Ländern', { n: d.visitedCount, total: st.countableTotal })} · ${pct} % · ${tn(data.cities.length, 'Stadt', 'Städte')}`}
-      >
-        {t('Länder')}
-      </LargeTitle>
-      <div style={{ margin: '0 16px 14px' }}>
+      <div class="tab-head">
+        <h1>{t('Länder')}</h1>
+        {mode !== 'goals' && (
+          <button class={`icon-btn mat press ${searching ? 'accent' : ''}`} aria-label={searching ? t('Suche schliessen') : t('Suchen')} onClick={() => (searching ? closeSearch() : setSearching(true))}>
+            <Icon name={searching ? 'x' : 'search'} />
+          </button>
+        )}
+      </div>
+      <Overview d={d} cities={data.cities.length} />
+      <div class="seg-wrap">
         <Segmented
           value={mode}
-          onChange={setMode}
+          onChange={(m) => {
+            setMode(m);
+            closeSearch();
+          }}
           options={[
             { value: 'countries', label: t('Länder') },
             { value: 'cities', label: t('Städte') },
@@ -292,18 +303,54 @@ export function CountriesScreen() {
           ]}
         />
       </div>
+      {searching && mode !== 'goals' && (
+        <div class="inline-search">
+          <SearchField value={q} onInput={setQ} placeholder={mode === 'cities' ? t('Meine Städte durchsuchen') : t('Land suchen')} autoFocus />
+        </div>
+      )}
       <Swap value={mode} order={['countries', 'cities', 'goals']}>
-        {mode === 'countries' && <CountryList d={d} nav={nav} />}
-        {mode === 'cities' && <CitiesPanel />}
+        {mode === 'countries' && <CountryList d={d} nav={nav} q={q} />}
+        {mode === 'cities' && <CitiesPanel q={q} />}
         {mode === 'goals' && <Goals d={d} />}
       </Swap>
     </>
   );
 }
 
-function CountryList({ d, nav }: { d: Derived; nav: Nav }) {
-  const [q, setQ] = useState('');
-  const [filter, setFilter] = useState<Filter>('all');
+/** Kompakte Übersicht: Anteil der Welt, Länder, Städte, Kontinente. */
+function Overview({ d, cities }: { d: Derived; cities: number }) {
+  const st = getStatic();
+  const share = d.visitedCount / st.countableTotal;
+  const continents = CONTINENTS.filter((c) => (d.byContinent[c.code] ?? 0) > 0).length;
+  return (
+    <div class="overview">
+      <div class="ov-ring">
+        <Ring value={share} size={62} stroke={6} />
+        <span class="num">{Math.round(share * 100)}%</span>
+      </div>
+      <div class="ov-stats">
+        <div>
+          <b class="num">{fmtInt(d.visitedCount)}</b>
+          <span>{tw(d.visitedCount, 'Land', 'Länder')}</span>
+        </div>
+        <div>
+          <b class="num">{fmtInt(cities)}</b>
+          <span>{tw(cities, 'Stadt', 'Städte')}</span>
+        </div>
+        <div>
+          <b class="num">
+            {continents}
+            <small>/6</small>
+          </b>
+          <span>{t('Kontinente')}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CountryList({ d, nav, q }: { d: Derived; nav: Nav; q: string }) {
+  const [filter, setFilter] = useState<Filter>('visited');
   const [sort, setSort] = useState<Sort>('continent');
 
   const all = useMemo(
@@ -311,65 +358,73 @@ function CountryList({ d, nav }: { d: Derived; nav: Nav }) {
     [d],
   );
   const counts = {
-    all: all.length,
     visited: all.filter((c) => d.countries.get(c.c)?.visited).length,
     wish: all.filter((c) => d.countries.get(c.c)?.wish).length,
+    all: all.length,
   };
 
   const items = useMemo(() => {
     const n = normalize(q);
+    // Bei einer Suche alle Länder durchsuchen, sonst den gewählten Filter zeigen
     let list = all.filter((c) => {
+      if (n) return c.n.some((x) => normalize(x).includes(n));
       const s = d.countries.get(c.c);
-      if (filter === 'visited' && !s?.visited) return false;
-      if (filter === 'wish' && !s?.wish) return false;
-      return !n || c.n.some((x) => normalize(x).includes(n));
+      if (filter === 'visited') return !!s?.visited;
+      if (filter === 'wish') return !!s?.wish;
+      return true;
     });
-    if (sort === 'date') {
-      list = [...list].sort((a, b) => {
-        const fa = d.countries.get(a.c)?.first ?? '';
-        const fb = d.countries.get(b.c)?.first ?? '';
-        return fb.localeCompare(fa);
-      });
-    }
+    if (sort === 'date')
+      list = [...list].sort((a, b) => (d.countries.get(b.c)?.first ?? '').localeCompare(d.countries.get(a.c)?.first ?? ''));
     return list;
   }, [all, q, filter, sort, d]);
 
   const groups = useMemo(() => {
-    if (sort !== 'continent') return [{ key: 'all', title: '', items }];
-    return CONTINENTS.map((ct) => ({ key: ct.code, title: continentName(ct.code), items: items.filter((c) => c.ct === ct.code) })).filter((g) => g.items.length);
-  }, [items, sort]);
+    if (sort !== 'continent') return [{ key: 'all', title: '', count: '', items }];
+    return CONTINENTS.map((ct) => {
+      const list = items.filter((c) => c.ct === ct.code);
+      const total = getStatic().countableByContinent[ct.code] ?? 0;
+      const visited = list.filter((c) => d.countries.get(c.c)?.visited).length;
+      return { key: ct.code, title: continentName(ct.code), count: filter === 'all' && !q ? `${visited}/${total}` : String(list.length), items: list };
+    }).filter((g) => g.items.length);
+  }, [items, sort, filter, q]);
 
   const nextSort = () => setSort(sort === 'continent' ? 'az' : sort === 'az' ? 'date' : 'continent');
 
   return (
     <>
-      <SearchField value={q} onInput={setQ} placeholder={t('Land suchen')} />
-      <div class="chips" style={{ marginTop: '12px' }}>
-        <Chip on={filter === 'all'} onClick={() => setFilter('all')} count={counts.all}>
-          {t('Alle')}
-        </Chip>
-        <Chip on={filter === 'visited'} onClick={() => setFilter('visited')} count={counts.visited}>
-          {t('Besucht')}
-        </Chip>
-        <Chip on={filter === 'wish'} onClick={() => setFilter('wish')} count={counts.wish}>
-          {t('Wunschliste')}
-        </Chip>
-        <Chip onClick={nextSort}>
-          <Icon name="layers" size={15} /> {t(SORT_LABEL[sort])}
-        </Chip>
-      </div>
-      {!items.length && <Empty icon="search" title={t('Nichts gefunden')} text={q ? t('Kein Land passt zu «{q}».', { q }) : t('Hier ist noch nichts.')} />}
+      {!q && (
+        <div class="chips">
+          <Chip on={filter === 'visited'} onClick={() => setFilter('visited')} count={counts.visited}>
+            {t('Besucht')}
+          </Chip>
+          <Chip on={filter === 'wish'} onClick={() => setFilter('wish')} count={counts.wish}>
+            {t('Wunschliste')}
+          </Chip>
+          <Chip on={filter === 'all'} onClick={() => setFilter('all')} count={counts.all}>
+            {t('Alle')}
+          </Chip>
+          <button class="chip press chip-sort" onClick={nextSort} aria-label={t('Sortierung')}>
+            <Icon name="layers" size={15} /> {t(SORT_LABEL[sort])}
+          </button>
+        </div>
+      )}
+      {!items.length &&
+        (q ? (
+          <Empty icon="search" title={t('Nichts gefunden')} text={t('Kein Land passt zu «{q}».', { q })} />
+        ) : filter === 'visited' ? (
+          <Empty icon="globe" title={t('Noch keine Länder')} text={t('Tippe auf der Karte ein Land an oder importiere deine Flüge unter Profil.')} />
+        ) : (
+          <Empty icon="star" title={t('Wunschliste ist leer')} text={t('Tippe auf der Karte ein Land an und wähle «Wunschliste».')} />
+        ))}
       {groups.map((g) => (
         <div key={`${g.key}-${filter}-${sort}`}>
           {g.title && (
-            <SectionTitle>
-              {g.title}
-              <span style={{ marginLeft: '8px', color: 'var(--text3)' }}>
-                {g.items.filter((c) => d.countries.get(c.c)?.visited).length}/{g.items.length}
-              </span>
-            </SectionTitle>
+            <div class="group-head">
+              <span>{g.title}</span>
+              <span class="num">{g.count}</span>
+            </div>
           )}
-          <div class="list stagger" style={!g.title ? { marginTop: '14px' } : undefined}>
+          <div class="list compact" style={!g.title ? { marginTop: '8px' } : undefined}>
             {g.items.map((c, i) => (
               <CountryRow key={c.c} c={c} s={d.countries.get(c.c)} i={i} onClick={() => nav.push(<CountryDetail code={c.c} />)} />
             ))}
@@ -382,7 +437,7 @@ function CountryList({ d, nav }: { d: Derived; nav: Nav }) {
 
 function CountryRow({ c, s, i, onClick }: { c: CountryMeta; s?: CountryStat; i: number; onClick: () => void }) {
   const sub = s?.visited
-    ? [s.first ? t('seit {d}', { d: fmtMonthYear(s.first) }) : '', statusText(s)].filter(Boolean).join(' · ')
+    ? [s.first ? t('seit {d}', { d: fmtMonthYear(s.first) }) : '', s.cities.length ? tn(s.cities.length, 'Stadt', 'Städte') : ''].filter(Boolean).join(' · ') || statusText(s)
     : s?.wish
       ? t('Wunschliste')
       : c.k
@@ -390,20 +445,16 @@ function CountryRow({ c, s, i, onClick }: { c: CountryMeta; s?: CountryStat; i: 
         : t('Gebiet');
   return (
     <Row
-      style={{ ...stagger(i), contentVisibility: i > 20 ? 'auto' : undefined, containIntrinsicSize: '58px' }}
+      style={{ contentVisibility: i > 20 ? 'auto' : undefined, containIntrinsicSize: '52px' }}
       lead={flag(c.c)}
       leadClass="flag"
       title={countryName(c.c)}
       sub={sub}
       trail={
         s?.visited ? (
-          <span class="badge ok">
-            <Icon name="check" stroke={3} />
-          </span>
+          <span class="dot-status v" />
         ) : s?.wish ? (
-          <span class="badge day">
-            <Icon name="star" stroke={2.4} />
-          </span>
+          <span class="dot-status w" />
         ) : undefined
       }
       chevron
