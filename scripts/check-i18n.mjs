@@ -28,7 +28,7 @@ for (const f of files) {
   }
 }
 // Texte, die über Variablen laufen
-for (const extra of ['Karte', 'Länder', 'Trips', 'Flüge', 'Profil', 'Europa', 'Asien', 'Afrika', 'Nordamerika', 'Südamerika', 'Ozeanien', 'Antarktis', 'A–Z', 'Kontinent', 'Datum', 'Abflug', 'Ankunft', 'Ziel', 'Umstieg', 'Auto', 'Bus', 'Schiff', 'Zug', 'Andere'])
+for (const extra of ['Karte', 'Länder', 'Profil', 'Europa', 'Asien', 'Afrika', 'Nordamerika', 'Südamerika', 'Ozeanien', 'Antarktis', 'A–Z', 'Kontinent', 'Datum', 'Auto', 'Bus', 'Schiff', 'Zug', 'Andere', 'System', 'Hell', 'Dunkel'])
   used.add(extra);
 
 const strings = readFileSync('src/lib/strings.ts', 'utf8');

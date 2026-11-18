@@ -63,6 +63,8 @@ const pathAt = (g: Geo, level: number): Path2D | null => {
   return p;
 };
 let geoCache: Geo[] | null = null;
+/** Länder mit Ausschnitt und Pfaden aller Detailstufen (einmal berechnet, überall genutzt). */
+export const countryGeometry = () => geometry();
 function geometry(): Geo[] {
   if (geoCache) return geoCache;
   geoCache = getStatic().world.countries.map((m) => {
@@ -447,6 +449,8 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
 
   // ---------- Tippen, Hover, langes Drücken ----------
   const lp = useRef<{ timer: number; x: number; y: number; fired: boolean } | null>(null);
+  const hoverAt = useRef<[number, number]>([0, 0]);
+  const hoverRaf = useRef(0);
   const cancelLongPress = () => {
     if (lp.current) clearTimeout(lp.current.timer);
     lp.current = lp.current?.fired ? lp.current : null;
@@ -481,13 +485,18 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
       lp.current = null;
     }
     if (e.pointerType !== 'mouse' || e.buttons) return;
-    const [mx, my] = toMap(e.clientX, e.clientY);
-    const code = hitTest(mx, my);
-    if (code !== S.hover) {
-      S.hover = code;
-      root.current?.classList.toggle('over-country', !!code);
-      redraw();
-    }
+    hoverAt.current = [e.clientX, e.clientY];
+    if (hoverRaf.current) return;
+    hoverRaf.current = requestAnimationFrame(() => {
+      hoverRaf.current = 0;
+      const [mx, my] = toMap(hoverAt.current[0], hoverAt.current[1]);
+      const code = hitTest(mx, my);
+      if (code !== S.hover) {
+        S.hover = code;
+        root.current?.classList.toggle('over-country', !!code);
+        redraw();
+      }
+    });
   };
   const onPointerUp = () => {
     if (lp.current && !lp.current.fired) {

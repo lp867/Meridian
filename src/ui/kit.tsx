@@ -6,22 +6,15 @@ import { fmtInt } from '../lib/format';
 import { Icon } from './Icon';
 import { goBack } from '../lib/backstack';
 
-/** Federnde Linse, die zwischen Optionen gleitet und sich dabei streckt. */
+/** Markierung, die ruhig zur gewählten Option gleitet (nur transform, läuft auf der GPU). */
 export function slideLens(el: HTMLElement, from: { x: number; w: number } | null, to: { x: number; w: number }) {
   el.style.width = `${to.w}px`;
   el.style.transform = `translateX(${to.x}px)`;
   if (!from || reducedMotion() || (from.x === to.x && from.w === to.w)) return;
-  const dist = Math.abs(to.x - from.x);
-  const stretch = 1 + Math.min(0.38, (dist / to.w) * 0.22);
-  const mid = (from.x + to.x) / 2 - (to.w * stretch - to.w) / 2 + (to.w - from.w) / 4;
-  el.animate(
-    [
-      { transform: `translateX(${from.x}px) scaleX(${from.w / to.w})` },
-      { transform: `translateX(${mid}px) scale(${stretch}, 0.9)`, offset: 0.4 },
-      { transform: `translateX(${to.x}px) scale(1, 1)` },
-    ],
-    { duration: springs.bounce.ms, easing: springs.bounce.easing },
-  );
+  el.animate([{ transform: `translateX(${from.x}px) scaleX(${from.w / to.w})` }, { transform: `translateX(${to.x}px) scaleX(1)` }], {
+    duration: springs.smooth.ms,
+    easing: springs.smooth.easing,
+  });
 }
 
 export function Segmented<T extends string>({
@@ -111,32 +104,9 @@ export function SearchField({ value, onInput, placeholder, autoFocus }: { value:
   );
 }
 
-/** Zählt Zahlen weich hoch, wenn sie sich ändern. */
+/** Zahl formatiert anzeigen (ohne Hochzählen – ruhiger und sparsamer). */
 export function AnimatedNumber({ value, format = fmtInt }: { value: number; format?: (n: number) => string }) {
-  const [shown, setShown] = useState(value);
-  const from = useRef(value);
-  useEffect(() => {
-    const start = from.current;
-    if (start === value || reducedMotion()) {
-      setShown(value);
-      from.current = value;
-      return;
-    }
-    const t0 = performance.now();
-    const dur = 700;
-    let raf = 0;
-    const tick = (t: number) => {
-      const p = Math.min(1, (t - t0) / dur);
-      const e = 1 - Math.pow(1 - p, 4);
-      const v = start + (value - start) * e;
-      setShown(v);
-      from.current = v;
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [value]);
-  return <span class="num">{format(Math.round(shown * 10) / 10)}</span>;
+  return <span class="num">{format(Math.round(value * 10) / 10)}</span>;
 }
 
 export function Ring({ value, size = 54, stroke = 6 }: { value: number; size?: number; stroke?: number }) {
@@ -170,14 +140,9 @@ export function Ring({ value, size = 54, stroke = 6 }: { value: number; size?: n
 }
 
 export function Progress({ value }: { value: number }) {
-  const [p, setP] = useState(0);
-  useEffect(() => {
-    const r = requestAnimationFrame(() => setP(value));
-    return () => cancelAnimationFrame(r);
-  }, [value]);
   return (
     <div class={`progress ${value >= 1 ? 'done' : ''}`}>
-      <i style={{ '--p': String(Math.min(1, p)) } as CSSProperties} />
+      <i style={{ '--p': String(Math.min(1, value)) } as CSSProperties} />
     </div>
   );
 }

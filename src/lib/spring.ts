@@ -28,11 +28,12 @@ export function spring(duration: number, bounce: number): Spring {
 
 const supportsLinear = typeof CSS !== 'undefined' && CSS.supports('transition-timing-function', 'linear(0, 1)');
 
+// Alle Kurven ohne Überschwingen: ruhig und professionell
 export const springs = {
-  smooth: supportsLinear ? spring(0.42, 0) : { easing: 'cubic-bezier(.2,.9,.25,1)', ms: 420 },
-  bounce: supportsLinear ? spring(0.5, 0.3) : { easing: 'cubic-bezier(.3,1.4,.5,1)', ms: 520 },
-  snappy: supportsLinear ? spring(0.32, 0.15) : { easing: 'cubic-bezier(.25,1.2,.5,1)', ms: 340 },
-  gentle: supportsLinear ? spring(0.6, 0.12) : { easing: 'cubic-bezier(.2,.9,.3,1)', ms: 600 },
+  smooth: supportsLinear ? spring(0.36, 0) : { easing: 'cubic-bezier(.2,.8,.2,1)', ms: 360 },
+  bounce: supportsLinear ? spring(0.36, 0) : { easing: 'cubic-bezier(.2,.8,.2,1)', ms: 360 },
+  snappy: supportsLinear ? spring(0.26, 0) : { easing: 'cubic-bezier(.2,.8,.2,1)', ms: 260 },
+  gentle: supportsLinear ? spring(0.45, 0) : { easing: 'cubic-bezier(.2,.8,.2,1)', ms: 450 },
 };
 
 export const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;

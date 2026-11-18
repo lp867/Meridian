@@ -314,19 +314,12 @@ function AddPlaceSheet({ lon, lat, cc }: { lon: number; lat: number; cc: string 
 }
 
 function VisitStep({ row, onBack, existing }: { row: CityRow | null; onBack: () => void; existing?: City }) {
-  const d = useDerived();
   const [date, setDate] = useState('');
-  const [tripId, setTripId] = useState('');
   const name = row ? cityRowName(row) : cityName(existing!);
   const cc = row ? row[2] : existing!.cc;
-  const trips = useMemo(() => {
-    const inCountry = d.trips.filter((tr) => tr.countries.includes(cc));
-    return [...inCountry, ...d.trips.filter((tr) => !inCountry.includes(tr))].slice(0, 60);
-  }, [d, cc]);
 
   const save = () => {
-    const tr = tripId ? d.tripById.get(tripId) : undefined;
-    const visit: CityVisit = { date: date || tr?.start || undefined, tripId: tripId || undefined };
+    const visit: CityVisit = { date: date || undefined };
     if (row) addCity(row, visit);
     else if (existing)
       updateData((dd) => ({ ...dd, cities: dd.cities.map((c) => (c.id === existing.id ? { ...c, visits: [...c.visits, visit] } : c)) }));
@@ -353,22 +346,11 @@ function VisitStep({ row, onBack, existing }: { row: CityRow | null; onBack: () 
       />
       <div class="sheet-body swap" style={{ '--dir': '1' }}>
         <p class="hint" style={{ margin: '0 20px 16px' }}>
-          {countryName(cc)} · {t('Datum und Trip sind freiwillig.')}
+          {countryName(cc)} · {t('Das Datum ist freiwillig.')}
         </p>
         <label class="field">
           <span>{t('Datum des Besuchs')}</span>
           <input type="date" value={date} onInput={(e) => setDate((e.currentTarget as HTMLInputElement).value)} />
-        </label>
-        <label class="field">
-          <span>{t('Zu einem Trip')}</span>
-          <select value={tripId} onChange={(e) => setTripId((e.currentTarget as HTMLSelectElement).value)}>
-            <option value="">{t('Keinem Trip zuordnen')}</option>
-            {trips.map((tr) => (
-              <option value={tr.id}>
-                {tr.name} · {fmtRange(tr.start, tr.end)}
-              </option>
-            ))}
-          </select>
         </label>
         <div class="sheet-actions">
           <button class="btn primary press" onClick={save}>
@@ -424,12 +406,10 @@ function CitySheet({ id }: { id: number }) {
         {city.visits.length ? (
           <div class="list">
             {city.visits.map((v, i) => {
-              const tr = v.tripId ? d.tripById.get(v.tripId) : v.date ? d.trips.find((x) => x.start <= v.date! && v.date! <= x.end) : undefined;
               return (
                 <Row
                   lead={<Icon name="calendar" />}
                   title={v.date ? fmtDate(v.date) : t('Ohne Datum')}
-                  sub={tr ? tr.name : undefined}
                   trail={
                     <button class="icon-btn press" style={{ width: '34px', height: '34px' }} aria-label={t('Besuch löschen')} onClick={() => removeVisit(i)}>
                       <Icon name="x" size={16} stroke={2.3} />

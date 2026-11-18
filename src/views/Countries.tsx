@@ -11,7 +11,6 @@ import { useNav, type Nav } from '../ui/Stack';
 import { MiniMap, type Box } from '../ui/WorldMap';
 import { goBackThen } from '../lib/backstack';
 import { CitiesPanel, openCityAdd, openCity } from './Cities';
-import { TripDetail } from './Trips';
 import type { AppData } from '../lib/types';
 
 type Status = 'none' | 'visited' | 'wish';
@@ -31,7 +30,7 @@ function statusText(s: CountryStat | undefined) {
   if (!s) return '';
   if (s.home) return t('Heimatland');
   if (s.derived && s.layoverOnly) return t('Nur umgestiegen');
-  if (s.derived) return tn(s.trips.length, 'Reise', 'Reisen');
+  if (s.derived) return tn(Math.max(1, s.trips.length), 'Besuch', 'Besuche');
   if (s.manual) return t('Von Hand markiert');
   if (s.wish) return t('Wunschliste');
   return '';
@@ -101,7 +100,7 @@ export function CountrySheet({ code, nav }: { code: string; nav: Nav }) {
               <div class="v" style={{ fontSize: '19px' }}>
                 {s.trips.length} · {s.cities.length}
               </div>
-              <div class="l">{t('Reisen · Städte')}</div>
+              <div class="l">{t('Besuche · Städte')}</div>
             </div>
           </div>
         )}
@@ -167,7 +166,7 @@ export function CountryDetail({ code }: { code: string }) {
           </div>
           <div class="stat" style={stagger(2)}>
             <div class="v">{s.trips.length}</div>
-            <div class="l">{tw(s.trips.length, 'Reise', 'Reisen')}</div>
+            <div class="l">{tw(s.trips.length, 'Besuch', 'Besuche')}</div>
           </div>
           <div class="stat" style={stagger(3)}>
             <div class="v">{s.cities.length}</div>
@@ -202,22 +201,6 @@ export function CountryDetail({ code }: { code: string }) {
         </p>
       )}
 
-      {!!s?.trips.length && (
-        <>
-          <SectionTitle>{t('Reisen')}</SectionTitle>
-          <div class="list">
-            {s.trips.map((tr) => (
-              <Row
-                lead={<Icon name={tr.kind === 'manual' ? 'route' : tr.dayTrip ? 'sun' : 'suitcase'} />}
-                title={tr.name}
-                sub={fmtRange(tr.start, tr.end)}
-                chevron
-                onClick={() => nav.push(<TripDetail id={tr.id} />)}
-              />
-            ))}
-          </div>
-        </>
-      )}
 
       {neighbours.length > 0 && (
         <>

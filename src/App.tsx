@@ -5,8 +5,6 @@ import { SheetHost } from './ui/Sheet';
 import { ToastHost } from './ui/Toast';
 import { MapScreen } from './views/MapScreen';
 import { CountriesScreen } from './views/Countries';
-import { TripsScreen } from './views/Trips';
-import { FlightsScreen } from './views/Flights';
 import { ProfileScreen } from './views/Profile';
 import { Onboarding } from './views/Onboarding';
 import { useBackupWarning } from './views/shared';
@@ -20,8 +18,6 @@ import { applyTheme } from './lib/theme';
 const ROOTS: Record<TabId, () => preact.JSX.Element> = {
   map: () => <MapScreen />,
   countries: () => <CountriesScreen />,
-  trips: () => <TripsScreen />,
-  flights: () => <FlightsScreen />,
   profile: () => <ProfileScreen />,
 };
 

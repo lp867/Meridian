@@ -1,31 +1,31 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { metaStore, updateMeta, useMeta } from '../lib/store';
+import { updateMeta } from '../lib/store';
 import {
   authErrorText,
-  cloudAvailable,
   getAccount,
   resetPassword,
   runConfirmedAction,
   sendDeleteConfirmation,
   signIn,
   signInGoogle,
-  signOutAccount,
   signUp,
   subscribeAccount,
-  sync,
   type AccountState,
   type DangerAction,
 } from '../lib/cloud';
-import { fmtAgo } from '../lib/format';
 import { t } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
-import { Row, SectionTitle, Swap } from '../ui/kit';
+import { Swap } from '../ui/kit';
 import { SheetHeader, closeSheet, confirmSheet, openSheet } from '../ui/Sheet';
 import { toast } from '../ui/Toast';
 
 export function useAccount(): AccountState {
   const [s, setS] = useState(getAccount());
-  useEffect(() => subscribeAccount(setS), []);
+  useEffect(() => {
+    // Stand neu lesen: Er kann sich zwischen erstem Zeichnen und Abonnieren geändert haben
+    setS(getAccount());
+    return subscribeAccount(setS);
+  }, []);
   return s;
 }
 
@@ -261,106 +261,6 @@ export function openAuth(onDone?: () => void) {
       </>
     ),
     { tall: true, onClose: () => (authOpen = false) },
-  );
-}
-
-/** Konto-Bereich im Profil. */
-export function AccountSection() {
-  const acc = useAccount();
-  const meta = useMeta();
-  if (!cloudAvailable || acc.status === 'off') return null;
-
-  if (acc.status === 'loading') {
-    return (
-      <>
-        <SectionTitle>{t('Konto')}</SectionTitle>
-        <div class="list">
-          <Row lead={<Icon name="cloud" />} title={t('Verbinde …')} />
-        </div>
-      </>
-    );
-  }
-
-  if (acc.status === 'signedOut') {
-    return (
-      <>
-        <SectionTitle>{t('Konto')}</SectionTitle>
-        <div class="card account-cta">
-          <div class="account-cta-ico">
-            <Icon name="cloud" />
-          </div>
-          <b>{t('Reisen sichern und überall sehen')}</b>
-          <p>{t('Mit einem kostenlosen Konto sind deine Reisen gesichert und auf all deinen Geräten da.')}</p>
-          <button class="btn primary block press" onClick={() => openAuth()}>
-            {t('Anmelden oder Konto erstellen')}
-          </button>
-        </div>
-      </>
-    );
-  }
-
-  const status = acc.syncing
-    ? t('Synchronisiere …')
-    : meta.syncError
-      ? meta.syncError
-      : meta.lastSyncAt
-        ? t('Gesichert {t}', { t: fmtAgo(meta.lastSyncAt) })
-        : t('Noch nicht gesichert');
-
-  const logout = async () => {
-    const ok = await confirmSheet({
-      title: t('Abmelden?'),
-      text: t('Deine Reisen bleiben im Konto gespeichert. Auf diesem Gerät werden sie entfernt, bis du dich wieder anmeldest.'),
-      ok: t('Abmelden'),
-    });
-    if (!ok) return;
-    try {
-      await signOutAccount();
-      toast(t('Abgemeldet'));
-    } catch (e) {
-      toast((e as Error).message, true);
-    }
-  };
-
-  return (
-    <>
-      <SectionTitle>{t('Konto')}</SectionTitle>
-      <div class="list">
-        <Row
-          lead={acc.provider === 'google' ? <GoogleLogo size={20} /> : <Icon name="user" />}
-          title={acc.email || t('Angemeldet')}
-          sub={status}
-          trail={<span class={`badge ${meta.syncError ? 'warn' : 'ok'}`}>{meta.syncError ? t('Fehler') : t('aktiv')}</span>}
-        />
-        <Row
-          lead={<Icon name="refresh" />}
-          title={acc.syncing ? t('Synchronisiere …') : t('Jetzt synchronisieren')}
-          onClick={
-            acc.syncing
-              ? undefined
-              : () =>
-                  void sync().then(() => {
-                    const err = metaStore.get().syncError;
-                    toast(err || t('Synchronisiert'), !!err);
-                  })
-          }
-        />
-        <Row lead={<Icon name="chevL" />} title={t('Abmelden')} onClick={logout} />
-      </div>
-    </>
-  );
-}
-
-/** Ganz unten im Profil: Konto löschen (Pflicht für App-Stores), nur nach Bestätigung per E-Mail. */
-export function DeleteAccountButton() {
-  const acc = useAccount();
-  if (acc.status !== 'signedIn') return null;
-  return (
-    <div style={{ margin: '12px 16px 0' }}>
-      <button class="btn danger block press" onClick={() => openConfirmByMail('delete-account')}>
-        <Icon name="trash" /> {t('Konto löschen')}
-      </button>
-    </div>
   );
 }
 

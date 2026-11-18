@@ -12,7 +12,6 @@ import { navRegistry, useNav, type Nav } from '../ui/Stack';
 import { MiniMap, WorldMap, boxOfPoints, type MapArc, type MapDot } from '../ui/WorldMap';
 import { toast } from '../ui/Toast';
 import { goBackThen } from '../lib/backstack';
-import { TripDetail } from './Trips';
 import type { Flight } from '../lib/types';
 
 type Mode = 'list' | 'stats' | 'map' | 'planes';
@@ -27,6 +26,7 @@ export function FlightsScreen() {
   return (
     <>
       <NavBar
+        back
         title={t('Flüge')}
         right={
           <button class="icon-btn mat press" aria-label={t('FlightVault importieren')} onClick={openImport}>
@@ -39,7 +39,7 @@ export function FlightsScreen() {
         <Empty
           icon="plane"
           title={t('Noch keine Flüge')}
-          text={t('Importiere deinen Export aus FlightVault. Aus den Flügen entstehen automatisch Trips, Länder und Karte.')}
+          text={t('Importiere deinen Export aus FlightVault. Besuchte Länder und die Karte füllen sich dann automatisch.')}
           action={
             <button class="btn primary press" onClick={openImport}>
               <Icon name="download" /> {t('FlightVault importieren')}
@@ -78,7 +78,7 @@ function FlightList({ nav }: { nav: Nav }) {
   const [q, setQ] = useState('');
   const [year, setYear] = useState<number | null>(null);
   const years = d.stats.years.map((y) => y.year).reverse();
-  const flightIssues = d.issues.filter((i) => i.type !== 'noOutbound' && i.type !== 'noReturn');
+  const flightIssues = d.issues;
 
   const groups = useMemo(() => {
     const n = normalize(q);
@@ -180,7 +180,6 @@ export function FlightDetail({ id }: { id: string }) {
     );
   const a = data.airports[f.dep];
   const b = data.airports[f.arr];
-  const trip = d.tripOfFlight.get(f.id);
   const km = d.flightKm(f);
   const arcs: MapArc[] = a && b ? [{ key: f.id, d: arcPath([a.lon, a.lat], [b.lon, b.lat]) }] : [];
   const pts: [number, number][] = [];
@@ -244,14 +243,6 @@ export function FlightDetail({ id }: { id: string }) {
           <SectionTitle>{t('Kommentar')}</SectionTitle>
           <div class="card" style={{ fontSize: '15px', lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text' }}>
             {f.comments}
-          </div>
-        </>
-      )}
-      {trip && (
-        <>
-          <SectionTitle>{t('Trip')}</SectionTitle>
-          <div class="list">
-            <Row lead={<Icon name="suitcase" />} title={trip.name} sub={fmtDate(trip.start)} chevron onClick={() => nav.push(<TripDetail id={trip.id} />)} />
           </div>
         </>
       )}
@@ -492,15 +483,9 @@ export function ImportSheet({ onDone }: { onDone?: (r: ImportReport) => void }) 
           </>
         ) : (
           <div class="pop-in">
-            <div class="stat-grid">
-              <div class="stat">
-                <div class="v">{report.flightsNew}</div>
-                <div class="l">{t('neue Flüge')}</div>
-              </div>
-              <div class="stat">
-                <div class="v">{report.tripsNew}</div>
-                <div class="l">{t('neue Trips')}</div>
-              </div>
+            <div class="stat" style={{ margin: '0 16px' }}>
+              <div class="v">{report.flightsNew}</div>
+              <div class="l">{t('neue Flüge')}</div>
             </div>
             <p class="hint">
               {report.flightsUpdated + report.tripsUpdated > 0 && `${t('{n} bestehende Einträge aktualisiert.', { n: report.flightsUpdated + report.tripsUpdated })} `}
@@ -532,10 +517,6 @@ function issueText(i: Issue): { title: string; sub: string } {
       return { title: t('Flugnummer {n} ohne Airline-Code', { n: i.flight.flightNumber ?? '' }), sub: `${i.flight.dep} → ${i.flight.arr} · ${fmtDate(ymdUtc(i.flight.depTs))}` };
     case 'times':
       return { title: t('Zeiten prüfen: {r}', { r: `${i.flight.dep} → ${i.flight.arr}` }), sub: `${i.why} · ${fmtDate(ymdUtc(i.flight.depTs))}` };
-    case 'noOutbound':
-      return { title: t('Hinflug fehlt: {n}', { n: i.trip.name }), sub: `${fmtDate(i.trip.start)} · ${t('Landweg im Trip angeben')}` };
-    case 'noReturn':
-      return { title: t('Rückflug fehlt: {n}', { n: i.trip.name }), sub: `${fmtDate(i.trip.end)} · ${t('oder Reise läuft noch')}` };
     case 'airport':
       return { title: t('Unbekannter Flughafen {c}', { c: i.code }), sub: t('Land und Zeitzone fehlen') };
   }
@@ -556,15 +537,11 @@ function DataCheckSheet() {
           {d.issues.map((i, n) => {
             const tx = issueText(i);
             const open =
-              'flight' in i
-                ? () => goBackThen(() => nav?.push(<FlightDetail id={i.flight.id} />))
-                : 'trip' in i
-                  ? () => goBackThen(() => nav?.push(<TripDetail id={i.trip.id} />))
-                  : undefined;
+              'flight' in i ? () => goBackThen(() => nav?.push(<FlightDetail id={i.flight.id} />)) : undefined;
             return (
               <Row
                 style={stagger(n)}
-                lead={<Icon name={i.type === 'noOutbound' || i.type === 'noReturn' ? 'suitcase' : 'plane'} />}
+                lead={<Icon name="plane" />}
                 title={tx.title}
                 sub={tx.sub}
                 chevron={!!open}

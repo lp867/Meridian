@@ -1,45 +1,47 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
-import { emptyData, replaceData, requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
-import { AccountSection, DeleteAccountButton, openConfirmByMail, useAccount } from './Account';
-import { switchTheme } from '../lib/theme';
+import { useRef, useState } from 'preact/hooks';
+import type { ComponentChildren } from 'preact';
+import { emptyData, metaStore, replaceData, updateData, updateMeta, useData, useMeta } from '../lib/store';
 import { backupJson, downloadFile, parseBackup, toCsv } from '../lib/importFv';
 import { cityName, useDerived } from '../lib/derive';
 import { countriesSorted, countryName } from '../lib/geo';
 import { flag, fmtAgo, fmtInt, normalize, todayYmd } from '../lib/format';
-import { LANGS, t, tn, tw, type Lang } from '../lib/i18n';
+import { LANGS, t, tn, type Lang } from '../lib/i18n';
+import { cloudAvailable, signOutAccount, sync } from '../lib/cloud';
+import { switchTheme } from '../lib/theme';
 import { Icon } from '../ui/Icon';
-import { AnimatedNumber, Chip, LargeTitle, NavBar, Row, SectionTitle, Segmented, Toggle, stagger } from '../ui/kit';
+import { LargeTitle, NavBar, Row, SectionTitle } from '../ui/kit';
 import { confirmSheet, openSheet, SheetHeader, closeSheet } from '../ui/Sheet';
 import { toast } from '../ui/Toast';
-import { openDataCheck, openImport } from './Flights';
-import { useBackupWarning } from './shared';
+import { useNav } from '../ui/Stack';
+import { FlightsScreen, openDataCheck, openImport } from './Flights';
+import { GoogleLogo, openAuth, openConfirmByMail, useAccount } from './Account';
 import type { AppData, Meta } from '../lib/types';
 
-const THRESHOLDS = [15000, 25000, 50000, 100000, 250000, 500000];
+const THRESHOLDS = [15000, 25000, 50000, 100000, 250000];
 const LAYOVERS = [6, 12, 24, 48];
+const THEME_LABEL: Record<Meta['theme'], string> = { system: 'System', light: 'Hell', dark: 'Dunkel' };
+
+const Value = ({ children }: { children: ComponentChildren }) => <span class="row-value">{children}</span>;
 
 export function ProfileScreen() {
   const data = useData();
   const meta = useMeta();
   const d = useDerived();
-  const warn = useBackupWarning();
   const acc = useAccount();
-  const [persisted, setPersisted] = useState<boolean | null>(null);
+  const nav = useNav();
   const fileInput = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    navigator.storage?.persisted?.().then(setPersisted).catch(() => setPersisted(false));
-  }, []);
+  const signedIn = acc.status === 'signedIn';
+  const name = data.settings.name?.trim();
 
   const setSetting = <K extends keyof AppData['settings']>(k: K, v: AppData['settings'][K]) =>
     updateData((dd) => ({ ...dd, settings: { ...dd.settings, [k]: v } }));
 
+  // ---------- Sicherung ----------
   const exportJson = () => {
     downloadFile(`meridian-backup-${todayYmd()}.json`, backupJson(data));
     updateMeta({ lastExportAt: Date.now() });
     toast(t('Sicherung gespeichert'));
   };
-
   const importJson = async (files: FileList | null) => {
     const file = files?.[0];
     if (!file) return;
@@ -47,10 +49,7 @@ export function ProfileScreen() {
       const backup = parseBackup(await file.text());
       const ok = await confirmSheet({
         title: t('Sicherung einspielen?'),
-        text: t('{f}, {c}. Die Daten auf diesem Gerät werden ersetzt.', {
-          f: tn(backup.flights.length, 'Flug', 'Flüge'),
-          c: tn(backup.cities.length, 'Stadt', 'Städte'),
-        }),
+        text: t('{f}, {c}. Die Daten auf diesem Gerät werden ersetzt.', { f: tn(backup.flights.length, 'Flug', 'Flüge'), c: tn(backup.cities.length, 'Stadt', 'Städte') }),
         ok: t('Einspielen'),
         danger: true,
       });
@@ -61,22 +60,60 @@ export function ProfileScreen() {
       toast((e as Error).message, true);
     }
   };
+  const exportCsv = () =>
+    openSheet(() => (
+      <>
+        <SheetHeader title={t('Als CSV exportieren')} />
+        <div class="sheet-body">
+          <div class="list">
+            <Row
+              lead={<Icon name="flag" />}
+              title={t('Länder')}
+              chevron
+              onClick={() => {
+                const rows = [...d.countries.values()]
+                  .filter((c) => c.visited || c.wish)
+                  .map((c) => [c.code, countryName(c.code), c.visited ? 'visited' : 'wishlist', c.first ?? '', c.last ?? '', c.cities.length, data.countries[c.code]?.note ?? '']);
+                downloadFile(`meridian-countries-${todayYmd()}.csv`, toCsv(['code', 'country', 'status', 'first_visit', 'last_visit', 'cities', 'note'], rows), 'text/csv');
+                closeSheet();
+              }}
+            />
+            <Row
+              lead={<Icon name="building" />}
+              title={t('Städte')}
+              chevron
+              onClick={() => {
+                const rows = data.cities.map((c) => [c.id, cityName(c), c.cc, c.pop, c.capital ? 1 : 0, c.visits.map((v) => v.date ?? '').join(' '), c.note ?? '']);
+                downloadFile(`meridian-cities-${todayYmd()}.csv`, toCsv(['id', 'city', 'country', 'population', 'capital', 'visits', 'note'], rows), 'text/csv');
+                closeSheet();
+              }}
+            />
+          </div>
+        </div>
+      </>
+    ));
 
-  const exportCountries = () => {
-    const rows = [...d.countries.values()]
-      .filter((c) => c.visited || c.wish)
-      .map((c) => [c.code, countryName(c.code), c.visited ? 'visited' : 'wishlist', c.first ?? '', c.last ?? '', c.trips.length, c.cities.length, data.countries[c.code]?.note ?? '']);
-    downloadFile(`meridian-countries-${todayYmd()}.csv`, toCsv(['code', 'country', 'status', 'first_visit', 'last_visit', 'trips', 'cities', 'note'], rows), 'text/csv');
-  };
-  const exportCities = () => {
-    const rows = data.cities.map((c) => [c.id, cityName(c), c.cc, c.pop, c.capital ? 1 : 0, c.visits.map((v) => v.date ?? '').join(' '), c.note ?? '']);
-    downloadFile(`meridian-cities-${todayYmd()}.csv`, toCsv(['geonames_id', 'city', 'country', 'population', 'capital', 'visits', 'note'], rows), 'text/csv');
+  // ---------- Konto ----------
+  const syncStatus = acc.status !== 'signedIn' ? '' : acc.syncing ? t('Synchronisiere …') : meta.syncError ? meta.syncError : meta.lastSyncAt ? t('Gesichert {t}', { t: fmtAgo(meta.lastSyncAt) }) : t('Noch nicht gesichert');
+  const logout = async () => {
+    const ok = await confirmSheet({
+      title: t('Abmelden?'),
+      text: t('Deine Reisen bleiben im Konto gespeichert. Auf diesem Gerät werden sie entfernt, bis du dich wieder anmeldest.'),
+      ok: t('Abmelden'),
+    });
+    if (!ok) return;
+    try {
+      await signOutAccount();
+      toast(t('Abgemeldet'));
+    } catch (e) {
+      toast((e as Error).message, true);
+    }
   };
 
+  // ---------- Löschen ----------
   const wipe = async () => {
-    // Mit Konto: erst per E-Mail bestätigen (löscht auch in der Cloud)
-    if (acc.status === 'signedIn') {
-      openConfirmByMail('wipe-data');
+    if (signedIn) {
+      openConfirmByMail('wipe-data'); // mit Konto: erst per E-Mail bestätigen
       return;
     }
     const ok = await confirmSheet({
@@ -90,188 +127,268 @@ export function ProfileScreen() {
     toast(t('Daten gelöscht'));
   };
 
-  const name = data.settings.name?.trim();
-  const stats = [
-    { v: d.visitedCount, l: tw(d.visitedCount, 'Land', 'Länder') },
-    { v: data.cities.length, l: tw(data.cities.length, 'Stadt', 'Städte') },
-    { v: d.trips.length, l: tw(d.trips.length, 'Trip', 'Trips') },
-    { v: data.flights.length, l: tw(data.flights.length, 'Flug', 'Flüge') },
-  ];
+  const langName = LANGS.find((l) => l.code === meta.lang)?.name ?? meta.lang;
 
   return (
     <>
       <NavBar title={t('Profil')} />
       <LargeTitle>{t('Profil')}</LargeTitle>
 
-      <button class="card press profile-head" style={{ '--press': '1.015' }} onClick={() => openSheet(() => <NameSheet />)}>
+      {/* Kopf: Name, Konto/Heimat, drei Kennzahlen */}
+      <button class="card press profile-head" onClick={() => openSheet(() => <NameSheet />)}>
         <div class="avatar">{name ? name.slice(0, 1).toUpperCase() : flag(data.settings.home)}</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div class="pname">{name || t('Name hinzufügen')}</div>
-          <div class="psub">
-            {flag(data.settings.home)} {countryName(data.settings.home)}
-          </div>
+          <div class="psub">{signedIn ? acc.email : `${flag(data.settings.home)} ${countryName(data.settings.home)}`}</div>
         </div>
-        <Icon name="pencil" size={18} />
+        <Icon name="pencil" size={17} />
       </button>
-      <div class="profile-stats stagger">
-        {stats.map((s, i) => (
-          <div class="stat" style={stagger(i)}>
-            <div class="v">
-              <AnimatedNumber value={s.v} />
-            </div>
-            <div class="l">{s.l}</div>
-          </div>
-        ))}
+      <div class="profile-stats">
+        <div>
+          <b class="num">{fmtInt(d.visitedCount)}</b>
+          <span>{t('Länder')}</span>
+        </div>
+        <div>
+          <b class="num">{fmtInt(data.cities.length)}</b>
+          <span>{t('Städte')}</span>
+        </div>
+        <div>
+          <b class="num">{fmtInt(data.flights.length)}</b>
+          <span>{t('Flüge')}</span>
+        </div>
       </div>
 
-      <AccountSection />
-
-      <SectionTitle>{t('Darstellung')}</SectionTitle>
-      <div style={{ margin: '0 16px' }}>
-        <Segmented
-          value={meta.theme}
-          onChange={(v: Meta['theme']) => {
-            switchTheme(v);
-            updateMeta({ theme: v });
-          }}
-          options={[
-            {
-              value: 'system',
-              label: (
-                <span class="seg-ico">
-                  <Icon name="monitor" size={16} /> {t('System')}
-                </span>
-              ),
-            },
-            {
-              value: 'light',
-              label: (
-                <span class="seg-ico">
-                  <Icon name="sun" size={16} /> {t('Hell')}
-                </span>
-              ),
-            },
-            {
-              value: 'dark',
-              label: (
-                <span class="seg-ico">
-                  <Icon name="moon" size={16} /> {t('Dunkel')}
-                </span>
-              ),
-            },
-          ]}
-        />
-      </div>
-
-      <SectionTitle>{t('Sprache')}</SectionTitle>
-      <div class="list">
-        {LANGS.map((l) => (
-          <Row
-            lead={flag(l.cc)}
-            leadClass="flag"
-            title={l.name}
-            trail={
-              <span class={`check ${meta.lang === l.code ? 'on' : ''}`}>
-                <Icon name="check" stroke={3} />
-              </span>
-            }
-            onClick={() => updateMeta({ lang: l.code as Lang })}
-          />
-        ))}
-      </div>
-
-      <SectionTitle>{t('Reisen')}</SectionTitle>
+      {/* Flüge */}
+      <SectionTitle>{t('Flüge')}</SectionTitle>
       <div class="list">
         <Row
-          lead={flag(data.settings.home)}
-          leadClass="flag"
+          lead={<Icon name="plane" />}
+          title={t('Meine Flüge')}
+          sub={data.flights.length ? `${tn(d.stats.count, 'Flug', 'Flüge')} · ${fmtInt(d.stats.km)} km` : t('Noch keine Flüge')}
+          chevron
+          onClick={() => nav.push(<FlightsScreen />)}
+        />
+        <Row lead={<Icon name="download" />} title={t('FlightVault importieren')} chevron onClick={openImport} />
+        {d.issues.length > 0 && <Row lead={<Icon name="alert" />} title={t('Datencheck')} trail={<Value>{d.issues.length}</Value>} chevron onClick={openDataCheck} />}
+      </div>
+
+      {/* Konto */}
+      {cloudAvailable && (
+        <>
+          <SectionTitle>{t('Konto')}</SectionTitle>
+          <div class="list">
+            {acc.status === 'signedIn' ? (
+              <>
+                <Row lead={acc.provider === 'google' ? <GoogleLogo size={20} /> : <Icon name="user" />} title={acc.email || t('Angemeldet')} sub={syncStatus} />
+                <Row
+                  lead={<Icon name="refresh" />}
+                  title={t('Jetzt synchronisieren')}
+                  onClick={
+                    acc.syncing
+                      ? undefined
+                      : () =>
+                          void sync().then(() => {
+                            const err = metaStore.get().syncError;
+                            toast(err || t('Synchronisiert'), !!err);
+                          })
+                  }
+                />
+                <Row lead={<Icon name="logout" />} title={t('Abmelden')} onClick={logout} />
+              </>
+            ) : acc.status === 'loading' ? (
+              <Row lead={<Icon name="cloud" />} title={t('Verbinde …')} />
+            ) : (
+              <Row lead={<Icon name="cloud" />} title={t('Anmelden oder Konto erstellen')} sub={t('Reisen sichern und überall sehen')} chevron onClick={() => openAuth()} />
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Einstellungen */}
+      <SectionTitle>{t('Einstellungen')}</SectionTitle>
+      <div class="list">
+        <Row
+          lead={<Icon name={meta.theme === 'light' ? 'sun' : meta.theme === 'dark' ? 'moon' : 'monitor'} />}
+          title={t('Darstellung')}
+          trail={<Value>{t(THEME_LABEL[meta.theme])}</Value>}
+          chevron
+          onClick={() => openSheet(() => <ThemeSheet />)}
+        />
+        <Row lead={<Icon name="languages" />} title={t('Sprache')} trail={<Value>{langName}</Value>} chevron onClick={() => openSheet(() => <LanguageSheet />)} />
+        <Row
+          lead={<Icon name="home" />}
           title={t('Heimatland')}
-          sub={t('Trips beginnen und enden hier')}
-          trail={countryName(data.settings.home)}
+          trail={<Value>{countryName(data.settings.home)}</Value>}
           chevron
           onClick={() => openSheet(() => <HomePicker />, { tall: true })}
         />
-      </div>
-      <SectionTitle>{t('Städte zählen ab')}</SectionTitle>
-      <div class="chips" style={{ flexWrap: 'wrap' }}>
-        {THRESHOLDS.map((v) => (
-          <Chip on={data.settings.cityThreshold === v} onClick={() => setSetting('cityThreshold', v)}>
-            {tn(v, 'Einwohner', 'Einwohner')}
-          </Chip>
-        ))}
-      </div>
-      <p class="hint">{t('Hauptstädte zählen immer. Bereits erfasste Städte bleiben erhalten.')}</p>
-      <SectionTitle>{t('Umstieg statt Ziel, wenn kürzer als')}</SectionTitle>
-      <div class="chips">
-        {LAYOVERS.map((h) => (
-          <Chip on={data.settings.layoverHours === h} onClick={() => setSetting('layoverHours', h)}>
-            {tn(h, 'Stunde', 'Stunden')}
-          </Chip>
-        ))}
-      </div>
-      <p class="hint">{t('Touchdown zählt: Auch ein Land, in dem du nur umsteigst, gilt als besucht.')}</p>
-
-      <SectionTitle>{t('Sicherung als Datei')}</SectionTitle>
-      <div class="list">
         <Row
-          lead={<Icon name="upload" />}
-          title={t('Sicherung speichern (JSON)')}
-          sub={t('Zuletzt {t}', { t: fmtAgo(meta.lastExportAt) })}
-          trail={warn ? <span class="badge day">{t('empfohlen')}</span> : undefined}
-          onClick={exportJson}
+          lead={<Icon name="building" />}
+          title={t('Städte zählen ab')}
+          trail={<Value>{fmtInt(data.settings.cityThreshold)}</Value>}
+          chevron
+          onClick={() =>
+            openSheet(() => (
+              <ChoiceSheet
+                title={t('Städte zählen ab')}
+                hint={t('Hauptstädte zählen immer. Bereits erfasste Städte bleiben erhalten.')}
+                options={THRESHOLDS.map((v) => ({ value: String(v), label: tn(v, 'Einwohner', 'Einwohner') }))}
+                value={String(data.settings.cityThreshold)}
+                onPick={(v) => setSetting('cityThreshold', Number(v))}
+              />
+            ))
+          }
         />
-        <Row lead={<Icon name="download" />} title={t('Sicherung einspielen')} onClick={() => fileInput.current?.click()} />
-        <Row lead={<Icon name="flag" />} title={t('Länder als CSV')} onClick={exportCountries} />
-        <Row lead={<Icon name="building" />} title={t('Städte als CSV')} onClick={exportCities} />
-      </div>
-      <input ref={fileInput} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => importJson((e.currentTarget as HTMLInputElement).files)} />
-
-      <SectionTitle>{t('Daten')}</SectionTitle>
-      <div class="list">
-        <Row lead={<Icon name="plane" />} title={t('FlightVault importieren')} sub={`${tn(data.flights.length, 'Flug', 'Flüge')} · ${tn(data.fvTrips.length, 'Trip', 'Trips')}`} chevron onClick={openImport} />
-        <Row lead={<Icon name="alert" />} title={t('Datencheck')} sub={d.issues.length ? tn(d.issues.length, 'Hinweis', 'Hinweise') : t('Alles sauber')} chevron onClick={openDataCheck} />
         <Row
-          lead={<Icon name="shield" />}
-          title={persisted ? t('Daten geschützt') : t('Nicht dauerhaft geschützt')}
-          sub={persisted ? t('Der Browser löscht sie nicht bei Platzmangel') : t('Der Browser könnte Daten bei Platzmangel löschen')}
-          trail={
-            !persisted ? (
-              <button
-                class="btn small press"
-                onClick={async () => {
-                  const ok = await requestPersistence();
-                  setPersisted(ok);
-                  toast(ok ? t('Daten sind jetzt geschützt') : t('Der Browser hat abgelehnt – installiere die App'), !ok);
-                }}
-              >
-                {t('Schützen')}
-              </button>
-            ) : undefined
+          lead={<Icon name="route" />}
+          title={t('Umstieg statt Ziel')}
+          trail={<Value>{t('unter {n} h', { n: data.settings.layoverHours })}</Value>}
+          chevron
+          onClick={() =>
+            openSheet(() => (
+              <ChoiceSheet
+                title={t('Umstieg statt Ziel, wenn kürzer als')}
+                hint={t('Touchdown zählt: Auch ein Land, in dem du nur umsteigst, gilt als besucht.')}
+                options={LAYOVERS.map((h) => ({ value: String(h), label: tn(h, 'Stunde', 'Stunden') }))}
+                value={String(data.settings.layoverHours)}
+                onPick={(v) => setSetting('layoverHours', Number(v))}
+              />
+            ))
           }
         />
       </div>
 
+      {/* Sicherung */}
+      <SectionTitle>{t('Sicherung')}</SectionTitle>
+      <div class="list">
+        <Row lead={<Icon name="upload" />} title={t('Sicherung speichern')} trail={<Value>{fmtAgo(meta.lastExportAt)}</Value>} onClick={exportJson} />
+        <Row lead={<Icon name="download" />} title={t('Sicherung einspielen')} onClick={() => fileInput.current?.click()} />
+        <Row lead={<Icon name="file" />} title={t('Als CSV exportieren')} chevron onClick={exportCsv} />
+      </div>
+      <input ref={fileInput} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => importJson((e.currentTarget as HTMLInputElement).files)} />
+
+      {/* Über */}
       <SectionTitle>{t('Über')}</SectionTitle>
-      <div class="list plain">
-        <div class="kv">
-          <span class="k">{t('Version')}</span>
-          <span class="v">Meridian {__APP_VERSION__}</span>
+      <div class="list">
+        <Row lead={<Icon name="info" />} title="Meridian" trail={<Value>{__APP_VERSION__}</Value>} />
+        <Row lead={<Icon name="shield" />} title={t('Datenschutz & Datenquellen')} chevron onClick={() => openSheet(() => <AboutSheet />)} />
+      </div>
+
+      {/* Löschen – bewusst ganz unten und getrennt */}
+      <div class="list danger-zone">
+        <Row lead={<Icon name="trash" />} title={t('Alle Daten löschen')} onClick={wipe} />
+        {signedIn && <Row lead={<Icon name="user" />} title={t('Konto löschen')} onClick={() => openConfirmByMail('delete-account')} />}
+      </div>
+    </>
+  );
+}
+
+// ---------- Auswahl-Sheets ----------
+function ChoiceSheet({ title, hint, options, value, onPick }: { title: string; hint?: string; options: { value: string; label: ComponentChildren }[]; value: string; onPick: (v: string) => void }) {
+  return (
+    <>
+      <SheetHeader title={title} />
+      <div class="sheet-body">
+        <div class="list">
+          {options.map((o) => (
+            <Row
+              title={o.label}
+              trail={
+                <span class={`check ${o.value === value ? 'on' : ''}`}>
+                  <Icon name="check" stroke={3} />
+                </span>
+              }
+              onClick={() => {
+                onPick(o.value);
+                closeSheet();
+              }}
+            />
+          ))}
+        </div>
+        {hint && <p class="hint">{hint}</p>}
+      </div>
+    </>
+  );
+}
+
+function ThemeSheet() {
+  const meta = useMeta();
+  const options: { value: Meta['theme']; icon: string }[] = [
+    { value: 'system', icon: 'monitor' },
+    { value: 'light', icon: 'sun' },
+    { value: 'dark', icon: 'moon' },
+  ];
+  return (
+    <>
+      <SheetHeader title={t('Darstellung')} />
+      <div class="sheet-body">
+        <div class="list">
+          {options.map((o) => (
+            <Row
+              lead={<Icon name={o.icon} />}
+              title={t(THEME_LABEL[o.value])}
+              trail={
+                <span class={`check ${meta.theme === o.value ? 'on' : ''}`}>
+                  <Icon name="check" stroke={3} />
+                </span>
+              }
+              onClick={() => {
+                switchTheme(o.value);
+                updateMeta({ theme: o.value });
+              }}
+            />
+          ))}
+        </div>
+        <p class="hint">{t('«System» folgt der Einstellung deines Geräts.')}</p>
+      </div>
+    </>
+  );
+}
+
+function LanguageSheet() {
+  const meta = useMeta();
+  return (
+    <>
+      <SheetHeader title={t('Sprache')} />
+      <div class="sheet-body">
+        <div class="list">
+          {LANGS.map((l) => (
+            <Row
+              lead={flag(l.cc)}
+              leadClass="flag"
+              title={l.name}
+              trail={
+                <span class={`check ${meta.lang === l.code ? 'on' : ''}`}>
+                  <Icon name="check" stroke={3} />
+                </span>
+              }
+              onClick={() => {
+                updateMeta({ lang: l.code as Lang });
+                closeSheet();
+              }}
+            />
+          ))}
         </div>
       </div>
-      <p class="hint" style={{ lineHeight: 1.6 }}>
-        {t('Datenquellen')}: <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> (CC BY 4.0),{' '}
-        <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>,{' '}
-        <a href="https://github.com/mledoze/countries" target="_blank" rel="noreferrer">mledoze/countries</a> (ODbL),{' '}
-        <a href="https://github.com/mwgg/Airports" target="_blank" rel="noreferrer">mwgg/Airports</a> (MIT), Twemoji (CC BY 4.0).{' '}
-        {t('Ohne Konto bleiben alle Daten auf deinem Gerät. Mit Konto werden sie verschlüsselt übertragen und bei Google Firebase in Zürich gespeichert.')}
-      </p>
+    </>
+  );
+}
 
-      <div style={{ margin: '24px 16px 0' }}>
-        <button class="btn danger block press" onClick={wipe}>
-          <Icon name="trash" /> {t('Alle Daten löschen')}
-        </button>
+function AboutSheet() {
+  return (
+    <>
+      <SheetHeader title={t('Datenschutz & Datenquellen')} />
+      <div class="sheet-body">
+        <p class="hint" style={{ margin: '0 20px 12px', fontSize: '15px', color: 'var(--text2)', lineHeight: 1.55 }}>
+          {t('Ohne Konto bleiben alle Daten auf deinem Gerät. Mit Konto werden sie verschlüsselt übertragen und bei Google Firebase in Zürich gespeichert.')}
+        </p>
+        <p class="hint" style={{ margin: '0 20px', lineHeight: 1.6 }}>
+          {t('Datenquellen')}: <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a> (CC BY 4.0),{' '}
+          <a href="https://www.naturalearthdata.com/" target="_blank" rel="noreferrer">Natural Earth</a>,{' '}
+          <a href="https://github.com/mledoze/countries" target="_blank" rel="noreferrer">mledoze/countries</a> (ODbL),{' '}
+          <a href="https://github.com/mwgg/Airports" target="_blank" rel="noreferrer">mwgg/Airports</a> (MIT), Twemoji (CC BY 4.0).
+        </p>
       </div>
-      <DeleteAccountButton />
     </>
   );
 }
@@ -287,7 +404,7 @@ function NameSheet() {
     <>
       <SheetHeader title={t('Dein Name')} />
       <div class="sheet-body">
-        <label class="field">
+        <label class="field big">
           <span>{t('Name')}</span>
           <input value={name} placeholder={t('Wie sollen wir dich nennen?')} onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} enterKeyHint="done" />
         </label>
@@ -342,5 +459,3 @@ export function HomePicker({ onPicked }: { onPicked?: (cc: string) => void }) {
     </>
   );
 }
-
-export { fmtInt };

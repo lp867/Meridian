@@ -76,14 +76,26 @@ function onUser(u: User | null) {
   void sync();
 }
 
-/** Beim Start: Sitzung wiederherstellen, falls jemand angemeldet war. */
+/**
+ * Beim Start: Sitzung immer wiederherstellen. Auch wenn die App beim letzten Mal nichts von der
+ * Anmeldung mitbekommen hat (z. B. Google-Fenster), merkt Firebase sich die Sitzung –
+ * deshalb wird Firebase nach dem ersten Bild immer kurz im Hintergrund geladen.
+ */
 export function initCloud() {
   if (!cloudAvailable) return;
-  if (metaStore.get().accountUid) {
+  const known = !!metaStore.get().accountUid;
+  if (!known) setState({ status: 'signedOut' });
+  const restore = () =>
     load()
       .then(({ authM, auth }) => authM.getRedirectResult(auth).catch(() => null))
       .catch(() => setState({ status: 'signedOut' }));
-  } else setState({ status: 'signedOut' });
+  if (known) void restore();
+  else
+    // Firebase merkt sich Sitzungen in "firebaseLocalStorageDb" – nur dann im Hintergrund nachsehen
+    setTimeout(async () => {
+      const dbs = (await indexedDB.databases?.().catch(() => [])) ?? [];
+      if (dbs.some((d) => d.name === 'firebaseLocalStorageDb')) void restore();
+    }, 1200);
 
   let timer = 0;
   const later = (ms: number) => {

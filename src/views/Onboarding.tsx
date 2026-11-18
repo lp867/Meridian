@@ -85,7 +85,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
       <div class="onb-features stagger" key={`f${meta.lang}`}>
         {[
           { icon: 'globe', t: t('Weltkarte'), s: t('Besuchte Länder und Städte auf einen Blick') },
-          { icon: 'suitcase', t: t('Trips von selbst'), s: t('Aus deinen Flügen entstehen automatisch Reisen') },
+          { icon: 'building', t: t('Städte sammeln'), s: t('Grosse Städte und eigene Orte direkt auf der Karte') },
           { icon: 'shield', t: t('Deine Daten bleiben bei dir'), s: t('Ohne Konto alles auf dem Gerät, mit Konto auf allen Geräten') },
         ].map((f, n) => (
           <div class="onb-feature" style={{ '--i': String(n + 2) }}>
@@ -111,21 +111,7 @@ function Welcome({ onNext }: { onNext: () => void }) {
 /** Weltkarte, auf der nach und nach Länder aufleuchten. */
 function GlobeHero() {
   const st = getStatic();
-  const [lit, setLit] = useState<string[]>([]);
-  const order = useMemo(() => {
-    const pool = st.world.countries.filter((c) => c.c && c.d && !c.s).map((c) => c.c!);
-    return pool.sort(() => Math.random() - 0.5).slice(0, 26);
-  }, []);
-  useEffect(() => {
-    let n = 0;
-    const timer = setInterval(() => {
-      n++;
-      setLit(order.slice(0, n));
-      if (n >= order.length) clearInterval(timer);
-    }, 160);
-    return () => clearInterval(timer);
-  }, []);
-  const litSet = new Set(lit);
+  const litSet = useMemo(() => new Set(['CA', 'US', 'BR', 'FR', 'IT', 'ES', 'GB', 'DE', 'CH', 'GR', 'EG', 'ZA', 'IN', 'TH', 'JP', 'AU', 'NZ', 'MX', 'PE', 'NO']), []);
   return (
     <div class="onb-globe">
       <svg viewBox={`0 ${st.world.h * 0.06} ${st.world.w} ${st.world.h * 0.8}`} preserveAspectRatio="xMidYMid meet">

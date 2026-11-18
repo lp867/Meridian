@@ -62,6 +62,17 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2,json}'],
+        // Firebase (index.esm-*), Städte-/Flughafenlisten und seltene Schriftsysteme nicht vorab laden –
+        // erst beim ersten Gebrauch, danach offline verfügbar (spart ~3 MB beim Installieren)
+        globIgnores: ['**/inter-cyrillic*', '**/inter-greek*', '**/inter-vietnamese*', '**/index.esm-*.js', '**/data/cities.json', '**/data/airports.json'],
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) =>
+              url.origin === self.location.origin && /\/(assets\/(index\.esm-|inter-).*\.(js|woff2)|data\/(cities|airports)\.json)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: { cacheName: 'meridian-lazy', expiration: { maxEntries: 40 } },
+          },
+        ],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,

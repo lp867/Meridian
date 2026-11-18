@@ -35,9 +35,6 @@ export function installPressFeedback() {
     (e) => {
       const el = (e.target as HTMLElement).closest<HTMLElement>('.press');
       if (!el || (el as HTMLButtonElement).disabled) return;
-      const r = el.getBoundingClientRect();
-      el.style.setProperty('--px', `${e.clientX - r.left}px`);
-      el.style.setProperty('--py', `${e.clientY - r.top}px`);
       el.classList.add('is-pressed');
       current = el;
       startX = e.clientX;
@@ -57,30 +54,4 @@ export function installPressFeedback() {
   document.addEventListener('pointercancel', release, { passive: true });
   document.addEventListener('scroll', release, { passive: true, capture: true });
 
-  // Maus: Lichtpunkt folgt dem Zeiger über Buttons und Karten (wie Licht auf Glas)
-  let hovered: HTMLElement | null = null;
-  let raf = 0;
-  let last: PointerEvent | null = null;
-  document.addEventListener(
-    'pointermove',
-    (e) => {
-      if (e.pointerType !== 'mouse') return;
-      last = e;
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const ev = last!;
-        const el = (ev.target as HTMLElement).closest?.<HTMLElement>('.press') ?? null;
-        if (hovered && hovered !== el) hovered.classList.remove('is-hover');
-        hovered = el && !(el as HTMLButtonElement).disabled ? el : null;
-        if (!hovered) return;
-        const r = hovered.getBoundingClientRect();
-        hovered.style.setProperty('--px', `${ev.clientX - r.left}px`);
-        hovered.style.setProperty('--py', `${ev.clientY - r.top}px`);
-        hovered.classList.add('is-hover');
-      });
-    },
-    { passive: true },
-  );
-  document.addEventListener('pointerleave', () => hovered?.classList.remove('is-hover'), { passive: true });
 }

@@ -62,8 +62,6 @@ export type Issue =
   | { type: 'noClass'; flight: Flight }
   | { type: 'flightNo'; flight: Flight }
   | { type: 'times'; flight: Flight; why: string }
-  | { type: 'noOutbound'; trip: Trip }
-  | { type: 'noReturn'; trip: Trip }
   | { type: 'airport'; code: string };
 
 export interface Counted {
@@ -446,8 +444,6 @@ export function derive(data: AppData): Derived {
   }
   for (const code of unknown) issues.push({ type: 'airport', code });
   for (const t of trips) {
-    if (t.noOutbound) issues.push({ type: 'noOutbound', trip: t });
-    if (t.noReturn) issues.push({ type: 'noReturn', trip: t });
   }
 
   const result: Derived = {
