@@ -14,6 +14,8 @@ export interface MapDot {
   x: number;
   y: number;
   cls?: string;
+  label?: string; // Name im Hinweis beim Darüberfahren
+  sub?: string;
 }
 export interface MapArc {
   key: string | number;
@@ -25,6 +27,8 @@ export interface MapApi {
   fitBox: (box: Box | null, animate?: boolean, onlyIn?: boolean) => void;
   /** Kurzer, ruhiger Ring um eine Stadt (z. B. nach dem Hinzufügen). */
   pulse: (cityId: number) => void;
+  /** Ruhig um die Bildmitte zoomen (Faktor 2 = hinein, 0.5 = hinaus). */
+  zoomBy: (factor: number) => void;
 }
 /**
  * Städte-Ebene: alle wählbaren Städte, nach Wichtigkeit sortiert (besuchte zuerst, dann nach Grösse).
@@ -37,6 +41,7 @@ export interface CityLayer {
   id: Float64Array;
   flags: Uint8Array; // 1 = besucht, 2 = Hauptstadt
   label: (i: number) => string;
+  sub?: (i: number) => string; // Zusatz im Hinweis beim Darüberfahren
 }
 export interface MapPress {
   lon: number;
@@ -54,6 +59,8 @@ interface Props {
   onCountry?: (code: string | null) => void;
   onCity?: (id: number) => void;
   onLongPress?: (p: MapPress) => void;
+  /** Meldet, ob ganz hinaus- bzw. hineingezoomt ist (für die Zoom-Knöpfe). */
+  onScale?: (atMin: boolean, atMax: boolean) => void;
   initialBox?: Box | null;
   apiRef?: (api: MapApi) => void;
   padTop?: number;
@@ -141,6 +148,8 @@ interface Palette {
 const TAU = Math.PI * 2;
 const MAX_CITIES = 900; // höchstens so viele Punkte pro Bild
 const LABEL_FONT = '600 11.5px "Inter Variable", Inter, system-ui, sans-serif';
+// Versatz für den Lichthof um die Namen (8 Richtungen)
+const HALO = [-1.2, 0, 1.2, 0, 0, -1.2, 0, 1.2, -0.9, -0.9, 0.9, 0.9, -0.9, 0.9, 0.9, -0.9];
 function readPalette(): Palette {
   const cs = getComputedStyle(document.documentElement);
   const v = (n: string) => parseColor(cs.getPropertyValue(n));
@@ -167,7 +176,7 @@ function readPalette(): Palette {
 
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 
-export function WorldMap({ status, selected, dots, arcs, airports, cities, onCountry, onCity, onLongPress, initialBox, apiRef, padTop = 20, padBottom = 20 }: Props) {
+export function WorldMap({ status, selected, dots, arcs, airports, cities, onCountry, onCity, onLongPress, onScale, initialBox, apiRef, padTop = 20, padBottom = 20 }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const S = useRef({
@@ -190,14 +199,17 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     pl: { x: new Float32Array(MAX_CITIES), y: new Float32Array(MAX_CITIES), lx: new Float32Array(MAX_CITIES), i: new Int32Array(MAX_CITIES), n: 0 },
     grid: new Int32Array(0),
     labelW: new Map<number, number>(),
+    zoomTo: 0, // Ziel-Zoom der Knöpfe (mehrmals schnell klicken summiert sich)
+    scaleState: '',
     pulse: null as { id: number; t0: number } | null,
     raf: 0,
     zoom: null as ZoomBehavior<HTMLDivElement, unknown> | null,
     animating: 0,
     started: false,
   }).current;
-  const props = useRef({ onCountry, onCity, onLongPress, padTop, padBottom, initialBox });
-  props.current = { onCountry, onCity, onLongPress, padTop, padBottom, initialBox };
+  const props = useRef({ onCountry, onCity, onLongPress, onScale, padTop, padBottom, initialBox });
+  props.current = { onCountry, onCity, onLongPress, onScale, padTop, padBottom, initialBox };
+  const tip = useRef<HTMLDivElement>(null);
   const hitCtx = useRef<CanvasRenderingContext2D | null>(null);
 
   const target = (code: string | null): RGB => {
@@ -253,9 +265,10 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       ctx.fillStyle = css(c);
       ctx.fill(gp);
     }
-    // Grenzen
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 0.7 * lw;
+    // Grenzen: genau ein Bildschirmpixel breit. So nutzt der Browser den schnellen Haarlinien-Weg –
+    // rund dreimal schneller als dickere Linien, das war die Hauptursache fürs Ruckeln beim Zoomen.
+    ctx.lineJoin = 'miter';
+    ctx.lineWidth = 1 / (dpr * t.k);
     ctx.strokeStyle = css(pal.border);
     for (const g of geo) {
       if (!g.path || !visible(g.bb)) continue;
@@ -263,6 +276,7 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       if (gp) ctx.stroke(gp);
     }
     // Auswahl
+    ctx.lineJoin = 'round';
     if (S.sel) {
       const g = geo.find((x) => x.c === S.sel && x.path);
       const gp = g && pathAt(g, level);
@@ -422,51 +436,42 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     }
     P.n = n;
 
-    // noch nicht besucht: hohl
-    ctx.beginPath();
-    for (let k = 0; k < n; k++) {
-      const fk = L.flags[P.i[k]];
-      if (fk & 1) continue;
-      const r = (fk & 2 ? 4.6 : 3.7) * sc;
-      ctx.moveTo(P.x[k] + r, P.y[k]);
-      ctx.arc(P.x[k], P.y[k], r, 0, TAU);
-    }
-    ctx.fillStyle = css(pal.cityFill);
-    ctx.fill();
-    ctx.lineWidth = 1.8;
-    ctx.strokeStyle = css(pal.text, pal.light ? 0.6 : 0.88);
-    ctx.stroke();
-    // besucht: gefüllt wie bisher
-    ctx.beginPath();
-    for (let k = 0; k < n; k++) {
-      const fk = L.flags[P.i[k]];
-      if (!(fk & 1)) continue;
-      const r = (fk & 2 ? 5 : 4.2) * sc;
-      ctx.moveTo(P.x[k] + r, P.y[k]);
-      ctx.arc(P.x[k], P.y[k], r, 0, TAU);
-    }
-    ctx.fillStyle = css(pal.cityOn);
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = css(pal.cityOnRing);
-    ctx.stroke();
+    // Punkte als zwei Flächen (Ring, dann Füllung) – Flächen sind deutlich günstiger als Konturen
+    const dots = (on: number, rOf: (f: number) => number, ring: number, ringColor: string, fillColor: string) => {
+      for (let pass = 0; pass < 2; pass++) {
+        ctx.beginPath();
+        for (let k = 0; k < n; k++) {
+          const fk = L.flags[P.i[k]];
+          if ((fk & 1) !== on) continue;
+          const r = rOf(fk) + (pass ? -ring / 2 : ring / 2);
+          ctx.moveTo(P.x[k] + r, P.y[k]);
+          ctx.arc(P.x[k], P.y[k], r, 0, TAU);
+        }
+        ctx.fillStyle = pass ? fillColor : ringColor;
+        ctx.fill();
+      }
+    };
+    dots(0, (fk) => (fk & 2 ? 4.6 : 3.7) * sc, 1.8, css(pal.text, pal.light ? 0.6 : 0.88), css(pal.cityFill));
+    dots(1, (fk) => (fk & 2 ? 5 : 4.2) * sc, 2, css(pal.cityOnRing), css(pal.cityOn));
 
-    // Namen mit Lichthof, damit sie auf jeder Fläche lesbar sind
+    // Namen mit Lichthof: Text leicht versetzt in Hintergrundfarbe, darüber die Schrift
+    // (Schrift-Füllungen kommen aus dem Glyphen-Speicher und sind viel schneller als Schrift-Konturen)
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    ctx.lineJoin = 'round';
-    ctx.lineWidth = 3;
-    const halo = css(pal.border, 0.9);
-    const ink = css(pal.text);
-    const inkSoft = css(pal.text, 0.78);
+    ctx.fillStyle = css(pal.border, 0.85);
     for (let k = 0; k < n; k++) {
       if (Number.isNaN(P.lx[k])) continue;
-      const i = P.i[k];
-      const text = L.label(i);
-      ctx.strokeStyle = halo;
-      ctx.strokeText(text, P.lx[k], P.y[k]);
-      ctx.fillStyle = L.flags[i] & 1 ? ink : inkSoft;
-      ctx.fillText(text, P.lx[k], P.y[k]);
+      const text = L.label(P.i[k]);
+      const x = P.lx[k];
+      const y = P.y[k];
+      for (let o = 0; o < HALO.length; o += 2) ctx.fillText(text, x + HALO[o], y + HALO[o + 1]);
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.fillStyle = pass ? css(pal.text) : css(pal.text, 0.78);
+      for (let k = 0; k < n; k++) {
+        if (Number.isNaN(P.lx[k]) || (L.flags[P.i[k]] & 1) !== pass) continue;
+        ctx.fillText(L.label(P.i[k]), P.lx[k], P.y[k]);
+      }
     }
 
     // ruhiger Ring nach dem Hinzufügen
@@ -486,10 +491,10 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     }
   };
 
-  /** Nächste gezeichnete Stadt am Bildschirmpunkt (oder null). */
-  const cityAt = (px: number, py: number, radius: number): number | null => {
+  /** Nächste gezeichnete Stadt am Bildschirmpunkt (Index im letzten Bild oder -1). */
+  const cityHit = (px: number, py: number, radius: number): number => {
     const P = S.pl;
-    if (!S.city) return null;
+    if (!S.city) return -1;
     let best = -1;
     let bestD = radius * radius;
     for (let k = 0; k < P.n; k++) {
@@ -501,7 +506,11 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
         best = k;
       }
     }
-    return best < 0 ? null : S.city.id[P.i[best]];
+    return best;
+  };
+  const cityAt = (px: number, py: number, radius: number): number | null => {
+    const k = cityHit(px, py, radius);
+    return k < 0 || !S.city ? null : S.city.id[S.pl.i[k]];
   };
   const redraw = () => {
     if (!S.raf) S.raf = requestAnimationFrame(draw);
@@ -568,7 +577,14 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       .clickDistance(6)
       .on('zoom', (e) => {
         S.t = e.transform;
+        if (e.sourceEvent) {
+          // Hand am Rad oder Finger auf der Karte: Animationen der Knöpfe nicht dagegen laufen lassen
+          S.animating++;
+          S.zoomTo = 0;
+        }
         cancelLongPress();
+        hideTip();
+        reportScale();
         redraw();
       }));
     z.scaleExtent([kWorld * 0.85, kWorld * 60])
@@ -584,6 +600,8 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     const start = S.started ? S.t : boxTransform(props.current.initialBox ?? null);
     S.started = true;
     z.transform(sel, start);
+    S.scaleState = '';
+    reportScale();
   };
 
   const fitBox = (box: Box | null, animate = true, onlyIn = false) => {
@@ -612,8 +630,76 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     requestAnimationFrame(step);
   };
 
+  const reportScale = () => {
+    if (!S.zoom || !props.current.onScale) return;
+    const [k0, k1] = S.zoom.scaleExtent();
+    const atMin = S.t.k <= k0 * 1.001;
+    const atMax = S.t.k >= k1 * 0.999;
+    const state = `${atMin}${atMax}`;
+    if (state === S.scaleState) return;
+    S.scaleState = state;
+    props.current.onScale(atMin, atMax);
+  };
+
+  const zoomBy = (factor: number) => {
+    if (!S.w || !S.zoom || !root.current) return;
+    const sel = select(root.current);
+    const [k0, k1] = S.zoom.scaleExtent();
+    const from = S.t;
+    const target = Math.max(k0, Math.min(k1, (S.zoomTo || from.k) * factor));
+    if (Math.abs(target - from.k) < 1e-6) return;
+    S.zoomTo = target;
+    // Mitte des freien Kartenbereichs bleibt stehen
+    const { padTop: pt, padBottom: pb } = props.current;
+    const cx = S.w / 2;
+    const cy = pt + (S.h - pt - pb) / 2;
+    const mx = (cx - from.x) / from.k;
+    const my = (cy - from.y) / from.k;
+    const id = ++S.animating;
+    const dur = reducedMotion() ? 0 : 320;
+    const t0 = performance.now();
+    const step = (now: number) => {
+      if (S.animating !== id) return;
+      const p = dur ? Math.min(1, (now - t0) / dur) : 1;
+      const k = from.k * Math.pow(target / from.k, 1 - Math.pow(1 - p, 3));
+      S.zoom!.transform(sel, zoomIdentity.translate(cx - mx * k, cy - my * k).scale(k));
+      if (p < 1) requestAnimationFrame(step);
+      else S.zoomTo = 0;
+    };
+    requestAnimationFrame(step);
+  };
+
+  // Tastatur am Laptop: + und - zoomen (nur wenn diese Karte sichtbar ist und kein Feld/Sheet offen)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const zoomIn = e.key === '+' || e.key === '=';
+      if (!zoomIn && e.key !== '-') return;
+      const el = root.current;
+      const a = document.activeElement;
+      if (!el || !el.closest('.pane.active') || (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) || document.querySelector('.sheet.open')) return;
+      e.preventDefault();
+      zoomBy(zoomIn ? 2 : 0.5);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Schrift fertig geladen: Namen neu vermessen
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts) return;
+    const onDone = () => {
+      S.labelW.clear();
+      redraw();
+    };
+    fonts.addEventListener('loadingdone', onDone);
+    return () => fonts.removeEventListener('loadingdone', onDone);
+  }, []);
+
   useEffect(() => {
     apiRef?.({
+      zoomBy,
       fitBox,
       pulse: (id) => {
         S.pulse = { id, t0: performance.now() };
@@ -723,7 +809,7 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
     hoverRaf.current = requestAnimationFrame(() => {
       hoverRaf.current = 0;
       const r = root.current!.getBoundingClientRect();
-      const overCity = cityAt(hoverAt.current[0] - r.left, hoverAt.current[1] - r.top, 10) !== null;
+      const overCity = hoverCity(hoverAt.current[0] - r.left, hoverAt.current[1] - r.top);
       root.current?.classList.toggle('over-city', overCity);
       const [mx, my] = toMap(hoverAt.current[0], hoverAt.current[1]);
       const code = overCity ? null : hitTest(mx, my);
@@ -734,6 +820,52 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       }
     });
   };
+  const hideTip = () => tip.current?.classList.remove('show');
+  const showTip = (x: number, y: number, title: string, sub: string) => {
+    const el = tip.current;
+    if (!el) return;
+    (el.firstChild as HTMLElement).textContent = title;
+    (el.lastChild as HTMLElement).textContent = sub;
+    (el.lastChild as HTMLElement).style.display = sub ? '' : 'none';
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    const left = Math.max(8, Math.min(S.w - w - 8, x - w / 2));
+    const above = y - h - 12;
+    const top = above < 8 ? y + 14 : above;
+    el.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+    el.classList.add('show');
+  };
+  /** Maus über einer Stadt: Name zeigen. Gibt zurück, ob eine Stadt getroffen wurde. */
+  const hoverCity = (px: number, py: number): boolean => {
+    if (S.city) {
+      const k = cityHit(px, py, 10);
+      if (k >= 0) {
+        const i = S.pl.i[k];
+        showTip(S.pl.x[k], S.pl.y[k], S.city.label(i), S.city.sub?.(i) ?? '');
+        return true;
+      }
+    } else {
+      const { t } = S;
+      let best: MapDot | null = null;
+      let bestD = 100;
+      for (const d of S.dots) {
+        if (!d.label) continue;
+        const dx = d.x * t.k + t.x - px;
+        const dy = d.y * t.k + t.y - py;
+        const dd = dx * dx + dy * dy;
+        if (dd <= bestD) {
+          bestD = dd;
+          best = d;
+        }
+      }
+      if (best) {
+        showTip(best.x * t.k + t.x, best.y * t.k + t.y, best.label!, best.sub ?? '');
+        return true;
+      }
+    }
+    hideTip();
+    return false;
+  };
   const onPointerUp = () => {
     if (lp.current && !lp.current.fired) {
       clearTimeout(lp.current.timer);
@@ -742,6 +874,8 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
   };
   const onLeave = () => {
     onPointerUp();
+    hideTip();
+    root.current?.classList.remove('over-city');
     if (S.hover) {
       S.hover = null;
       root.current?.classList.remove('over-country');
@@ -784,6 +918,10 @@ export function WorldMap({ status, selected, dots, arcs, airports, cities, onCou
       onContextMenu={onContextMenu}
     >
       <canvas ref={canvas} class="map-canvas" role="img" aria-label="Weltkarte" />
+      <div class="map-tip" ref={tip} aria-hidden="true">
+        <b />
+        <span />
+      </div>
     </div>
   );
 }

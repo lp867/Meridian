@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { useData, useMeta } from '../lib/store';
-import { useDerived } from '../lib/derive';
-import { CONTINENTS, continentName, getStatic, project } from '../lib/geo';
-import { fmt1 } from '../lib/format';
+import { cityName, useDerived } from '../lib/derive';
+import { CONTINENTS, continentName, countryName, getStatic, project } from '../lib/geo';
+import { flag, fmt1 } from '../lib/format';
 import { t, tw } from '../lib/i18n';
 import { onShowCitiesOnMap } from '../lib/mapEvents';
 import { WorldMap, unionBox, type Box, type MapApi } from '../ui/WorldMap';
@@ -24,6 +24,7 @@ export function MapScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [world, setWorld] = useState(false);
+  const [scale, setScale] = useState({ min: false, max: false });
 
   // ---------- Städte-Modus ----------
   const [cityMode, setCityMode] = useState(false);
@@ -68,7 +69,7 @@ export function MapScreen() {
     () =>
       data.cities.map((c) => {
         const [x, y] = project(c.lon, c.lat);
-        return { key: c.id, x, y };
+        return { key: c.id, x, y, label: cityName(c), sub: `${flag(c.cc)} ${countryName(c.cc)}` };
       }),
     [data.cities],
   );
@@ -124,6 +125,7 @@ export function MapScreen() {
         onLongPress={(p) => openAddPlace(p.lon, p.lat, p.code)}
         initialBox={myBox}
         apiRef={(a) => (api.current = a)}
+        onScale={(min, max) => setScale({ min, max })}
         padTop={cityMode ? 190 : open ? 330 : 130}
         padBottom={110}
       />
@@ -208,6 +210,16 @@ export function MapScreen() {
         <button class="icon-btn mat press" onClick={toggleFit} aria-label={world ? t('Meine Länder zeigen') : t('Ganze Welt zeigen')}>
           <Icon name={world ? 'locate' : 'globe'} />
         </button>
+        {/* Zoom-Knöpfe wie bei Google Maps – nur mit Maus/Touchpad (am Handy zoomt man mit zwei Fingern) */}
+        <div class="zoom-ctl mat">
+          <button onClick={() => api.current?.zoomBy(2)} disabled={scale.max} aria-label={t('Hineinzoomen')} title={t('Hineinzoomen')}>
+            <Icon name="plus" stroke={2.2} />
+          </button>
+          <i />
+          <button onClick={() => api.current?.zoomBy(0.5)} disabled={scale.min} aria-label={t('Herauszoomen')} title={t('Herauszoomen')}>
+            <Icon name="minus" stroke={2.2} />
+          </button>
+        </div>
       </div>
     </>
   );

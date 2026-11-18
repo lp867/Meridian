@@ -90,7 +90,21 @@ export function buildCityLayer(idx: CityIndex, cities: City[], cc: string | null
     const s = src[i];
     return Array.isArray(s) ? cityRowName(s) : cityName(s);
   };
-  return { layer: { n, x, y, id, flags, label }, stats: { have, total } };
+  // Zusatz im Hinweis beim Darüberfahren: Land · Einwohner · Hauptstadt · besucht
+  const sub = (i: number) => {
+    const s = src[i];
+    const cc = Array.isArray(s) ? s[2] : s.cc;
+    const pop = Array.isArray(s) ? s[5] : s.pop;
+    return [
+      `${flag(cc)} ${countryName(cc)}`,
+      pop ? fmtPop(pop) : t('Eigener Ort'),
+      flags[i] & 2 ? t('Hauptstadt') : '',
+      flags[i] & 1 ? t('Besucht') : '',
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  };
+  return { layer: { n, x, y, id, flags, label, sub }, stats: { have, total } };
 }
 
 /** Ausschnitt für ein Land: die Landesfläche, ausser sie ist durch Überseegebiete riesig – dann die Städte. */

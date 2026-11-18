@@ -345,4 +345,6 @@ export const STRINGS: Record<string, [string, string, string]> = {
   'Weitere Länder': ['Other countries', 'Autres pays', 'Otros países'],
   'Stadt suchen': ['Search city', 'Rechercher une ville', 'Buscar ciudad'],
   'Antippen zum Hinzufügen': ['Tap to add', 'Touche pour ajouter', 'Toca para añadir'],
+  'Hineinzoomen': ['Zoom in', 'Zoom avant', 'Acercar'],
+  'Herauszoomen': ['Zoom out', 'Zoom arrière', 'Alejar'],
 };

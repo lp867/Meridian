@@ -2966,3 +2966,90 @@ svg {
   height: 18px;
   color: var(--text3);
 }
+
+/* ---------- Karte: Zoom-Knöpfe (nur Maus/Touchpad) ---------- */
+.zoom-ctl {
+  display: none;
+  flex-direction: column;
+  width: 46px;
+  border-radius: 23px;
+  overflow: hidden;
+}
+@media (hover: hover) and (pointer: fine) {
+  .zoom-ctl {
+    display: flex;
+  }
+}
+.zoom-ctl button {
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: var(--text);
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+.zoom-ctl button svg {
+  width: 20px;
+  height: 20px;
+}
+.zoom-ctl button:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.06);
+}
+.zoom-ctl button:active:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+.zoom-ctl button:disabled {
+  color: var(--text3);
+  cursor: default;
+}
+.zoom-ctl i {
+  height: 1px;
+  margin: 0 11px;
+  background: var(--sep);
+}
+:root[data-theme='light'] .zoom-ctl button:hover:not(:disabled) {
+  background-color: rgba(15, 25, 40, 0.05);
+}
+:root[data-theme='light'] .zoom-ctl button:active:not(:disabled) {
+  background-color: rgba(15, 25, 40, 0.09);
+}
+
+/* ---------- Karte: Hinweis beim Darüberfahren ---------- */
+.map-tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 11px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  background-color: var(--s2);
+  background-image: var(--sheen);
+  box-shadow:
+    var(--rim),
+    0 8px 24px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.map-tip.show {
+  opacity: 1;
+}
+.map-tip b {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+.map-tip span {
+  font-size: 12.5px;
+  color: var(--text2);
+}
+:root[data-theme='light'] .map-tip {
+  box-shadow:
+    var(--rim),
+    0 8px 22px rgba(20, 30, 50, 0.14);
+}

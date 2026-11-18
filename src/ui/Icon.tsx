@@ -11,6 +11,7 @@ const P: Record<string, string> = {
   settings: '<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>',
   search: '<circle cx="11" cy="11" r="7.5"/><path d="m20.5 20.5-4.2-4.2"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+  minus: '<path d="M5 12h14"/>',
   chevR: '<path d="m9 18 6-6-6-6"/>',
   chevL: '<path d="m15 18-6-6 6-6"/>',
   chevD: '<path d="m6 9 6 6 6-6"/>',
