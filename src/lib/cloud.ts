@@ -2,7 +2,7 @@
 // Firebase wird erst geladen, wenn jemand ein Konto nutzt – ohne Konto bleibt die App schlank.
 import type { Auth, User } from 'firebase/auth';
 import type { Firestore } from 'firebase/firestore/lite';
-import { firebaseConfig } from './firebase-config';
+import { appCheckSiteKey, firebaseConfig } from './firebase-config';
 import { dataStore, emptyData, metaStore, onDataChange, setDataFromSync, updateMeta } from './store';
 import { sanitizeData } from './sanitize';
 import { getLang, t } from './i18n';
@@ -42,6 +42,11 @@ function load(): Promise<Mods> {
   return (modsP ??= (async () => {
     const [{ initializeApp }, authM, fsM] = await Promise.all([import('firebase/app'), import('firebase/auth'), import('firebase/firestore/lite')]);
     const app = initializeApp(firebaseConfig);
+    if (appCheckSiteKey) {
+      // Nur Anfragen aus der echten App zulassen (Schutz vor Bots und fremden Skripten)
+      const ac = await import('firebase/app-check');
+      ac.initializeAppCheck(app, { provider: new ac.ReCaptchaEnterpriseProvider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+    }
     const auth = authM.initializeAuth(app, {
       persistence: [authM.indexedDBLocalPersistence, authM.browserLocalPersistence],
       popupRedirectResolver: authM.browserPopupRedirectResolver,
@@ -132,7 +137,29 @@ export async function signIn(email: string, password: string) {
   await authM.signInWithEmailAndPassword(auth, email.trim(), password);
 }
 
-/** Google-Anmeldung als Popup; wo Popups nicht gehen, per Weiterleitung. */
+/** Wartet, bis jemand angemeldet ist (oder die Zeit abläuft). */
+function waitForSignIn(ms: number): Promise<boolean> {
+  if (state.status === 'signedIn') return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const off = subscribeAccount((s) => {
+      if (s.status === 'signedIn') {
+        off();
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
+    const timer = setTimeout(() => {
+      off();
+      resolve(false);
+    }, ms);
+  });
+}
+
+/**
+ * Google-Anmeldung als Popup; wo Popups nicht gehen, per Weiterleitung.
+ * Chrome meldet das Google-Fenster manchmal fälschlich als «geschlossen», obwohl die
+ * Anmeldung geklappt hat – deshalb danach noch kurz auf die echte Anmeldung warten.
+ */
 export async function signInGoogle(): Promise<boolean> {
   const { authM, auth } = await load();
   auth.languageCode = getLang();
@@ -142,14 +169,84 @@ export async function signInGoogle(): Promise<boolean> {
     await authM.signInWithPopup(auth, provider);
     return true;
   } catch (e) {
-    if (silent(e)) return false;
     const code = (e as { code?: string })?.code;
     if (code === 'auth/popup-blocked' || code === 'auth/operation-not-supported-in-this-environment') {
       updateMeta({ accountUid: metaStore.get().accountUid || 'pending' });
       await authM.signInWithRedirect(auth, provider);
       return false;
     }
+    if (silent(e)) {
+      // Ergebnis kann trotzdem noch eintreffen
+      authM.getRedirectResult(auth).catch(() => null);
+      return waitForSignIn(6000);
+    }
     throw e;
+  }
+}
+
+/** Bis die laufende Synchronisierung fertig ist (z. B. direkt nach dem Anmelden). */
+export async function waitForSync() {
+  await new Promise((r) => setTimeout(r, 0));
+  await (running ?? Promise.resolve());
+}
+
+export const hasAnyData = () => hasContent(dataStore.get());
+
+// ---------- Löschen nur nach Bestätigung per E-Mail ----------
+export type DangerAction = 'delete-account' | 'wipe-data';
+
+/** Schickt einen Bestätigungslink an die E-Mail des Kontos. */
+export async function sendDeleteConfirmation(action: DangerAction) {
+  const { authM, auth } = await load();
+  const u = auth.currentUser;
+  if (!u?.email) throw new Error(t('Nicht angemeldet'));
+  auth.languageCode = getLang();
+  const url = `${location.origin}${location.pathname}?confirm=${action}`;
+  await authM.sendSignInLinkToEmail(auth, u.email, { url, handleCodeInApp: true });
+  updateMeta({ pendingAction: { action, email: u.email, at: Date.now() } });
+}
+
+/**
+ * Prüft beim Start, ob die App über einen Bestätigungslink geöffnet wurde.
+ * Gibt die bestätigte Aktion zurück (die Ausführung bestätigt die Person danach in der App).
+ */
+export async function consumeConfirmationLink(): Promise<DangerAction | null> {
+  const params = new URLSearchParams(location.search);
+  if (!cloudAvailable || !params.get('oobCode')) return null;
+  const clean = () => history.replaceState(history.state, '', location.pathname);
+  try {
+    const { authM, auth } = await load();
+    if (!authM.isSignInWithEmailLink(auth, location.href)) return null;
+    await auth.authStateReady();
+    const pending = metaStore.get().pendingAction;
+    const u = auth.currentUser;
+    if (!pending || Date.now() - pending.at > 3600_000 || !u || u.email !== pending.email) {
+      clean();
+      throw new Error(t('Dieser Link ist abgelaufen oder gehört zu einem anderen Gerät. Starte das Löschen bitte nochmals.'));
+    }
+    await authM.reauthenticateWithCredential(u, authM.EmailAuthProvider.credentialWithLink(pending.email, location.href));
+    clean();
+    return pending.action;
+  } catch (e) {
+    clean();
+    throw e instanceof Error && !(e as { code?: string }).code ? e : new Error(authErrorText(e));
+  }
+}
+
+/** Führt die bestätigte Aktion aus. */
+export async function runConfirmedAction(action: DangerAction) {
+  updateMeta({ pendingAction: undefined });
+  if (action === 'wipe-data') {
+    setDataFromSync({ ...emptyData(), settings: dataStore.get().settings, updatedAt: Date.now() });
+    const { fsM, db, auth } = await load();
+    const u = auth.currentUser;
+    if (u) {
+      const d = dataStore.get();
+      await fsM.setDoc(fsM.doc(db, 'users', u.uid), { data: JSON.stringify(d), updatedAt: d.updatedAt, version: 1 });
+      updateMeta({ syncRemote: d.updatedAt, syncLocal: d.updatedAt, lastSyncAt: Date.now() });
+    }
+  } else {
+    await deleteAccount();
   }
 }
 
@@ -169,17 +266,11 @@ export async function signOutAccount() {
   updateMeta({ accountUid: '', accountEmail: '', syncRemote: 0, syncLocal: 0, lastSyncAt: 0, syncError: '' });
 }
 
-/** Konto und Cloud-Daten löschen. Bei Bedarf vorher erneut bestätigen (Passwort oder Google). */
-export async function deleteAccount(password?: string) {
+/** Konto und Cloud-Daten löschen (nur nach Bestätigung per E-Mail-Link aufrufen). */
+async function deleteAccount() {
   const { authM, fsM, auth, db } = await load();
   const u = auth.currentUser;
   if (!u) throw new Error(t('Nicht angemeldet'));
-  const reauth = async () => {
-    if (providerOf(u) === 'google') await authM.reauthenticateWithPopup(u, new authM.GoogleAuthProvider());
-    else if (password) await authM.reauthenticateWithCredential(u, authM.EmailAuthProvider.credential(u.email ?? '', password));
-    else throw Object.assign(new Error('reauth'), { code: 'auth/requires-recent-login' });
-  };
-  if (password || providerOf(u) === 'google') await reauth();
   await fsM.deleteDoc(fsM.doc(db, 'users', u.uid));
   await authM.deleteUser(u);
   updateMeta({ accountUid: '', accountEmail: '', syncRemote: 0, syncLocal: 0, lastSyncAt: 0, syncError: '' });

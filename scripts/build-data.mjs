@@ -57,11 +57,18 @@ console.log(`  zählende Länder: ${countries.filter((c) => c.k).length}`);
 const topo = presimplify(structuredClone(require('world-atlas/countries-50m.json')));
 const simplified = simplify(topo, quantile(topo, Number(process.env.SIMPLIFY ?? 0.45)));
 const fc = feature(simplified, simplified.objects.countries);
+// Gröbere Detailstufen für die Canvas-Karte: herausgezoomt reichen wenige Punkte (viel schneller)
+const lod = (q) => {
+  const s = simplify(topo, quantile(topo, q));
+  return feature(s, s.objects.countries).features;
+};
+const fcLo = lod(0.06);
+const fcMid = lod(0.16);
 const NAME_FIX = { Somaliland: 'SO', Kosovo: 'XK', 'N. Cyprus': 'CY', 'Indian Ocean Ter.': 'CX' };
 const features = fc.features
-  .map((f) => {
+  .map((f, i) => {
     const cc = f.id ? byCcn3.get(f.id)?.cca2 : NAME_FIX[f.properties.name];
-    return { f, cc: cc ?? null };
+    return { f, lo: fcLo[i], mid: fcMid[i], cc: cc ?? null };
   })
   .filter(({ cc }) => cc !== 'AQ');
 
@@ -72,12 +79,14 @@ const [[, y0], [, y1]] = path.bounds({ type: 'FeatureCollection', features: feat
 const H = Math.ceil(y1 + Math.min(0, y0));
 
 const merged = new Map();
-for (const { f, cc } of features) {
+for (const { f, lo, mid, cc } of features) {
   const key = cc ?? `_${f.properties.name}`;
   const d = path(f);
   if (!d) continue;
-  const m = merged.get(key) ?? { c: cc, d: '', area: 0, feats: [] };
+  const m = merged.get(key) ?? { c: cc, d: '', l: '', m: '', area: 0, feats: [] };
   m.d += d;
+  m.l += path(lo) ?? '';
+  m.m += path(mid) ?? '';
   m.area += path.area(f);
   m.feats.push(f);
   merged.set(key, m);
@@ -104,6 +113,8 @@ const mapCountries = [...merged.values()].map((m) => {
   return {
     c: m.c,
     d: m.d,
+    l: m.l,
+    m: m.m,
     p: [Math.round(cx * 10) / 10, Math.round(cy * 10) / 10],
     bb: [Math.floor(bx0), Math.floor(by0), Math.ceil(bx1), Math.ceil(by1)],
     s: m.area < 4 ? 1 : 0, // Kleinstaat: zusätzlich als Punkt zeichnen

@@ -10,6 +10,7 @@ import { Icon } from '../ui/Icon';
 import { openSheet } from '../ui/Sheet';
 import { useNav } from '../ui/Stack';
 import { CountrySheet } from './Countries';
+import { openAddPlace, openCityAdd } from './Cities';
 
 export function MapScreen() {
   const data = useData();
@@ -39,7 +40,14 @@ export function MapScreen() {
 
   const myBox = useMemo<Box | null>(() => {
     const boxes = [...d.countries.values()].filter((c) => c.visited).map((c) => st.mapByCode.get(c.code)?.bb as Box | undefined);
-    return unionBox(boxes);
+    const u = unionBox(boxes);
+    if (!u) return null;
+    // Mindestausschnitt: bei wenigen Ländern die Umgebung zeigen, nicht nur ein Land formatfüllend
+    const cx = (u[0] + u[2]) / 2;
+    const cy = (u[1] + u[3]) / 2;
+    const bw = Math.max(u[2] - u[0], 150);
+    const bh = Math.max(u[3] - u[1], 90);
+    return [cx - bw / 2, cy - bh / 2, cx + bw / 2, cy + bh / 2] as Box;
   }, [d]);
 
   const pct = (d.visitedCount / st.countableTotal) * 100;
@@ -66,6 +74,7 @@ export function MapScreen() {
         selected={selected}
         dots={dots}
         onCountry={onCountry}
+        onLongPress={(p) => openAddPlace(p.lon, p.lat, p.code)}
         initialBox={myBox}
         apiRef={(a) => (api.current = a)}
         padTop={open ? 330 : 130}
@@ -124,6 +133,9 @@ export function MapScreen() {
       </button>
 
       <div class="map-fabs">
+        <button class="icon-btn mat press accent" onClick={() => openCityAdd()} aria-label={t('Stadt hinzufügen')}>
+          <Icon name="plus" stroke={2.3} />
+        </button>
         <button class="icon-btn mat press" onClick={toggleFit} aria-label={world ? t('Meine Länder zeigen') : t('Ganze Welt zeigen')}>
           <Icon name={world ? 'locate' : 'globe'} />
         </button>

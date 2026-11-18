@@ -11,6 +11,7 @@ service cloud.firestore {
         && request.resource.data.data is string
         && request.resource.data.data.size() < 900000
         && request.resource.data.updatedAt is int
+        && request.resource.data.updatedAt <= request.time.toMillis() + 600000
         && request.resource.data.version == 1;
     }
     // Alles andere ist gesperrt

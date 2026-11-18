@@ -118,6 +118,7 @@ export interface Meta {
   syncLocal: number; // Stand der Gerätedaten bei der letzten Synchronisierung
   lastSyncAt: number;
   syncError: string;
+  pendingAction?: { action: 'delete-account' | 'wipe-data'; email: string; at: number }; // wartet auf Bestätigung per E-Mail
   lang: 'de' | 'en' | 'fr' | 'es';
   theme: 'system' | 'dark' | 'light';
 }

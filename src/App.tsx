@@ -10,6 +10,9 @@ import { FlightsScreen } from './views/Flights';
 import { ProfileScreen } from './views/Profile';
 import { Onboarding } from './views/Onboarding';
 import { useBackupWarning } from './views/shared';
+import { finishConfirmedAction } from './views/Account';
+import { consumeConfirmationLink } from './lib/cloud';
+import { toast } from './ui/Toast';
 import { useData, useMeta } from './lib/store';
 import { applyLang } from './lib/i18n';
 import { applyTheme } from './lib/theme';
@@ -28,6 +31,12 @@ export function App() {
   // Sprache vor dem Rendern setzen, damit alle Texte passen
   applyLang(meta.lang, data.settings.home);
   useEffect(() => applyTheme(meta.theme), [meta.theme]);
+  // Wurde die App über einen Bestätigungslink (Löschen) geöffnet?
+  useEffect(() => {
+    consumeConfirmationLink()
+      .then((action) => action && finishConfirmedAction(action))
+      .catch((e) => toast((e as Error).message, true));
+  }, []);
 
   const [tab, setTab] = useState<TabId>('map');
   const [entering, setEntering] = useState<TabId | null>(null);

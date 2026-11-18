@@ -8,12 +8,12 @@ import pkg from './package.json' with { type: 'json' };
 // Google-Anmeldung braucht zusätzlich apis.google.com (Skript) und den Anmelde-Rahmen von firebaseapp.com.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' https://apis.google.com",
+  "script-src 'self' https://apis.google.com https://www.google.com https://www.gstatic.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   "connect-src 'self' https://*.googleapis.com",
-  "frame-src https://*.firebaseapp.com https://accounts.google.com",
+  "frame-src https://*.firebaseapp.com https://accounts.google.com https://www.google.com",
   "worker-src 'self'",
   "manifest-src 'self'",
   "object-src 'none'",

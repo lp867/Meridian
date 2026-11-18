@@ -33,7 +33,9 @@ export interface CountryMeta {
 
 export interface MapCountry {
   c: string | null;
-  d: string;
+  d: string; // volle Detailstufe
+  l?: string; // grob (Weltansicht)
+  m?: string; // mittel (Kontinente)
   p: [number, number];
   bb: [number, number, number, number];
   s: 0 | 1;

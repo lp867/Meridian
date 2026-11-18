@@ -1,27 +1,24 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { replaceData, requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
+import { requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
 import { countriesSorted, countryName, getStatic } from '../lib/geo';
-import { flag, fmtInt, normalize } from '../lib/format';
-import { importFlightVault, parseBackup } from '../lib/importFv';
-import { cloudAvailable } from '../lib/cloud';
-import { openAuth, useAccount } from './Account';
+import { flag, normalize } from '../lib/format';
 import { derive } from '../lib/derive';
+import { cloudAvailable, hasAnyData, waitForSync } from '../lib/cloud';
 import { LANGS, t, tn, type Lang } from '../lib/i18n';
 import { Icon } from '../ui/Icon';
 import { Swap } from '../ui/kit';
-import { SheetHeader, closeSheet, openSheet } from '../ui/Sheet';
-import { toast } from '../ui/Toast';
+import { AuthPanel, useAccount } from './Account';
 
-type Step = 'welcome' | 'home' | 'cities' | 'data' | 'done';
-const STEPS: Step[] = ['welcome', 'home', 'cities', 'data', 'done'];
+type Step = 'welcome' | 'account' | 'home' | 'done';
 
-/** Einrichtung beim ersten Start. */
+/** Einrichtung beim ersten Start: Sprache → Anmelden → Heimatland → fertig. */
 export function Onboarding({ onFinish }: { onFinish: () => void }) {
+  const steps: Step[] = cloudAvailable ? ['welcome', 'account', 'home', 'done'] : ['welcome', 'home', 'done'];
   const [step, setStep] = useState<Step>('welcome');
   const [leaving, setLeaving] = useState(false);
-  const i = STEPS.indexOf(step);
-  const next = () => setStep(STEPS[Math.min(STEPS.length - 1, i + 1)]);
-  const back = () => setStep(STEPS[Math.max(0, i - 1)]);
+  const i = steps.indexOf(step);
+  const next = () => setStep(steps[Math.min(steps.length - 1, i + 1)]);
+  const back = () => setStep(steps[Math.max(0, i - 1)]);
 
   const finish = () => {
     void requestPersistence();
@@ -30,6 +27,12 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
       updateMeta({ onboarded: true });
       onFinish();
     }, 480);
+  };
+
+  // Nach dem Anmelden: Wer schon Reisen im Konto hat, braucht kein Heimatland mehr zu wählen
+  const afterSignIn = async () => {
+    await waitForSync();
+    setStep(hasAnyData() ? 'done' : 'home');
   };
 
   return (
@@ -44,18 +47,17 @@ export function Onboarding({ onFinish }: { onFinish: () => void }) {
           <span style={{ width: '42px' }} />
         )}
         <div class="onb-dots" aria-hidden="true">
-          {STEPS.map((s, n) => (
+          {steps.map((s, n) => (
             <i class={n === i ? 'on' : n < i ? 'past' : ''} key={s} />
           ))}
         </div>
         <span style={{ width: '42px' }} />
       </div>
       <div class="onb-stage">
-        <Swap value={step} order={STEPS}>
+        <Swap value={step} order={steps}>
           {step === 'welcome' && <Welcome onNext={next} />}
+          {step === 'account' && <AccountStep onSignedIn={afterSignIn} onSkip={next} />}
           {step === 'home' && <HomeStep onNext={next} />}
-          {step === 'cities' && <CitiesStep onNext={next} />}
-          {step === 'data' && <DataStep onNext={next} />}
           {step === 'done' && <DoneStep onFinish={finish} />}
         </Swap>
       </div>
@@ -133,7 +135,53 @@ function GlobeHero() {
   );
 }
 
-// ---------- 2. Heimatland ----------
+// ---------- 2. Anmelden ----------
+function AccountStep({ onSignedIn, onSkip }: { onSignedIn: () => void; onSkip: () => void }) {
+  const acc = useAccount();
+  const [waiting, setWaiting] = useState(false);
+  const signedIn = acc.status === 'signedIn';
+  return (
+    <div class="onb-page">
+      <div class="onb-copy">
+        <div class="onb-icon pop-in">
+          <Icon name={signedIn ? 'check' : 'cloud'} />
+        </div>
+        <h1>{signedIn ? t('Angemeldet') : t('Melde dich an')}</h1>
+        <p>
+          {signedIn
+            ? acc.email
+            : t('Mit einem kostenlosen Konto sind deine Reisen gesichert und auf all deinen Geräten da – auch wenn du Meridian schon nutzt.')}
+        </p>
+      </div>
+      {signedIn ? (
+        <div class="onb-actions">
+          <button class="btn primary block press" disabled={waiting} onClick={onSignedIn}>
+            {t('Weiter')}
+          </button>
+        </div>
+      ) : (
+        <>
+          <AuthPanel
+            onSuccess={() => {
+              setWaiting(true);
+              onSignedIn();
+            }}
+          />
+          <div class="onb-actions">
+            <p class="hint" style={{ textAlign: 'center', margin: '0 0 6px' }}>
+              {t('Deine Reisen werden in Zürich gespeichert und nur für dich zugänglich.')}
+            </p>
+            <button class="onb-skip press" onClick={onSkip}>
+              {t('Ohne Konto fortfahren')}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ---------- 3. Heimatland ----------
 function HomeStep({ onNext }: { onNext: () => void }) {
   const data = useData();
   const [q, setQ] = useState('');
@@ -180,155 +228,7 @@ function HomeStep({ onNext }: { onNext: () => void }) {
   );
 }
 
-// ---------- 3. Städte ----------
-function CitiesStep({ onNext }: { onNext: () => void }) {
-  const data = useData();
-  const options = [
-    { v: 15000, s: t('Auch kleinere Städte') },
-    { v: 50000, s: t('Empfohlen: grosse Städte, nicht jedes Dorf') },
-    { v: 100000, s: t('Nur Grossstädte') },
-    { v: 250000, s: t('Nur Metropolen') },
-  ];
-  const set = (v: number) => updateData((d) => ({ ...d, settings: { ...d.settings, cityThreshold: v } }));
-  return (
-    <div class="onb-page">
-      <div class="onb-copy">
-        <div class="onb-icon pop-in">
-          <Icon name="building" />
-        </div>
-        <h1>{t('Welche Städte zählen?')}</h1>
-        <p>{t('So bleibt deine Liste übersichtlich. Hauptstädte zählen immer, und du kannst das später ändern.')}</p>
-      </div>
-      <div class="onb-cards stagger">
-        {options.map((o, n) => (
-          <button class={`onb-option big press ${data.settings.cityThreshold === o.v ? 'on' : ''}`} style={{ '--i': String(n), '--press': '0.985' }} onClick={() => set(o.v)}>
-            <span class="grow">
-              <b>{t('Ab {n} Einwohnern', { n: fmtInt(o.v) })}</b>
-              <span>{o.s}</span>
-            </span>
-            <span class={`check ${data.settings.cityThreshold === o.v ? 'on' : ''}`}>
-              <Icon name="check" stroke={3} />
-            </span>
-          </button>
-        ))}
-      </div>
-      <div class="onb-actions">
-        <button class="btn primary block press" onClick={onNext}>
-          {t('Weiter')}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------- 4. Daten ----------
-function DataStep({ onNext }: { onNext: () => void }) {
-  const data = useData();
-  const acc = useAccount();
-  const csv = useRef<HTMLInputElement>(null);
-  const json = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<string>('');
-
-  const importCsv = async (files: FileList | null) => {
-    if (!files?.length) return;
-    setBusy(true);
-    try {
-      const r = await importFlightVault([...files]);
-      setDone(t('{f} und {t} importiert', { f: tn(r.flightsNew, 'Flug', 'Flüge'), t: tn(r.tripsNew, 'Trip', 'Trips') }));
-    } catch (e) {
-      toast(t('Import fehlgeschlagen: {e}', { e: (e as Error).message }), true);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const importJson = async (files: FileList | null) => {
-    const f = files?.[0];
-    if (!f) return;
-    try {
-      const backup = parseBackup(await f.text());
-      replaceData(backup);
-      setDone(t('Sicherung geladen: {f}, {c}', { f: tn(backup.flights.length, 'Flug', 'Flüge'), c: tn(backup.cities.length, 'Stadt', 'Städte') }));
-    } catch (e) {
-      toast((e as Error).message, true);
-    }
-  };
-
-  return (
-    <div class="onb-page">
-      <div class="onb-copy">
-        <div class="onb-icon pop-in">
-          <Icon name="download" />
-        </div>
-        <h1>{t('Hast du schon Reisedaten?')}</h1>
-        <p>{t('Melde dich an, importiere deine Flüge oder starte einfach so und tippe Länder auf der Karte an.')}</p>
-      </div>
-      <div class="onb-cards stagger">
-        {cloudAvailable &&
-          (acc.status === 'signedIn' ? (
-            <div class="onb-option big on" style={{ '--i': '0' }}>
-              <span class="lead">
-                <Icon name="check" />
-              </span>
-              <span class="grow">
-                <b>{t('Angemeldet')}</b>
-                <span>{acc.email}</span>
-              </span>
-            </div>
-          ) : (
-            <button
-              class="onb-option big press"
-              style={{ '--i': '0', '--press': '0.985' }}
-              onClick={() => openAuth('signup', () => setDone(t('Angemeldet – deine Reisen werden gesichert')))}
-            >
-              <span class="lead">
-                <Icon name="user" />
-              </span>
-              <span class="grow">
-                <b>{t('Konto erstellen oder anmelden')}</b>
-                <span>{t('Reisen sichern und auf allen Geräten sehen – auch wenn du Meridian schon nutzt')}</span>
-              </span>
-              <Icon name="chevR" size={16} />
-            </button>
-          ))}
-        <button class="onb-option big press" style={{ '--i': '1', '--press': '0.985' }} disabled={busy} onClick={() => csv.current?.click()}>
-          <span class="lead">
-            <Icon name="plane" />
-          </span>
-          <span class="grow">
-            <b>{busy ? t('Importiere …') : t('FlightVault-Export')}</b>
-            <span>{t('CSV-Dateien für Flüge und Trips')}</span>
-          </span>
-          <Icon name="chevR" size={16} />
-        </button>
-        <button class="onb-option big press" style={{ '--i': '2', '--press': '0.985' }} onClick={() => json.current?.click()}>
-          <span class="lead">
-            <Icon name="file" />
-          </span>
-          <span class="grow">
-            <b>{t('Sicherungsdatei')}</b>
-            <span>{t('Eine Meridian-Sicherung (JSON)')}</span>
-          </span>
-          <Icon name="chevR" size={16} />
-        </button>
-      </div>
-      {done && (
-        <div class="onb-done-chip pop-in">
-          <Icon name="check" stroke={2.8} /> {done}
-        </div>
-      )}
-      <input ref={csv} type="file" accept=".csv,text/csv" multiple style={{ display: 'none' }} onChange={(e) => importCsv((e.currentTarget as HTMLInputElement).files)} />
-      <input ref={json} type="file" accept=".json,application/json" style={{ display: 'none' }} onChange={(e) => importJson((e.currentTarget as HTMLInputElement).files)} />
-      <div class="onb-actions">
-        <button class="btn primary block press" onClick={onNext}>
-          {done || data.flights.length || acc.status === 'signedIn' ? t('Weiter') : t('Ohne Daten starten')}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ---------- 5. Fertig ----------
+// ---------- 4. Fertig ----------
 function DoneStep({ onFinish }: { onFinish: () => void }) {
   const data = useData();
   const d = derive(data);
@@ -349,7 +249,7 @@ function DoneStep({ onFinish }: { onFinish: () => void }) {
       </div>
       <div class="onb-tip pop-in" style={{ animationDelay: '500ms' }}>
         <Icon name="sparkle" />
-        <span>{t('Tippe auf der Karte ein Land an, um es als besucht oder als Wunsch zu markieren. Städte fügst du unter «Länder» hinzu.')}</span>
+        <span>{t('Tippe auf ein Land, um es zu markieren. Halte den Finger auf die Karte gedrückt, um einen Ort hinzuzufügen. Flüge importierst du im Tab «Flüge».')}</span>
       </div>
       <div class="onb-actions" style={{ marginTop: 'auto' }}>
         <button class="btn primary block press" onClick={onFinish}>

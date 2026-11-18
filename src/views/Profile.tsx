@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { emptyData, replaceData, requestPersistence, updateData, updateMeta, useData, useMeta } from '../lib/store';
-import { AccountSection, DeleteAccountButton, useAccount } from './Account';
+import { AccountSection, DeleteAccountButton, openConfirmByMail, useAccount } from './Account';
+import { switchTheme } from '../lib/theme';
 import { backupJson, downloadFile, parseBackup, toCsv } from '../lib/importFv';
 import { cityName, useDerived } from '../lib/derive';
 import { countriesSorted, countryName } from '../lib/geo';
@@ -73,12 +74,14 @@ export function ProfileScreen() {
   };
 
   const wipe = async () => {
+    // Mit Konto: erst per E-Mail bestätigen (löscht auch in der Cloud)
+    if (acc.status === 'signedIn') {
+      openConfirmByMail('wipe-data');
+      return;
+    }
     const ok = await confirmSheet({
       title: t('Alle Daten löschen?'),
-      text:
-        acc.status === 'signedIn'
-          ? t('Flüge, Länder, Städte und Reisen werden gelöscht – auf diesem Gerät und in deinem Konto.')
-          : t('Flüge, Länder, Städte und Reisen auf diesem Gerät werden gelöscht.'),
+      text: t('Flüge, Länder, Städte und Reisen auf diesem Gerät werden gelöscht.'),
       ok: t('Alles löschen'),
       danger: true,
     });
@@ -127,7 +130,10 @@ export function ProfileScreen() {
       <div style={{ margin: '0 16px' }}>
         <Segmented
           value={meta.theme}
-          onChange={(v: Meta['theme']) => updateMeta({ theme: v })}
+          onChange={(v: Meta['theme']) => {
+            switchTheme(v);
+            updateMeta({ theme: v });
+          }}
           options={[
             {
               value: 'system',

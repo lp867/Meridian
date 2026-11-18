@@ -2057,15 +2057,17 @@ svg {
   background: radial-gradient(140px circle at var(--px, 50%) var(--py, 50%), rgba(31, 115, 232, 0.1), transparent 62%);
 }
 
-/* weicher Wechsel zwischen Hell und Dunkel */
-.theme-fade,
-.theme-fade * {
-  transition:
-    background-color 0.45s ease,
-    color 0.45s ease,
-    fill 0.45s ease,
-    stroke 0.45s ease,
-    box-shadow 0.45s ease !important;
+/* Hell/Dunkel: kein Überblenden – das neue Design wächst als Kreis (siehe theme.ts) */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+/* Während des Wechsels ruhen andere Farbübergänge, sonst färbt sich das neue Bild nach */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
 }
 
 /* ---------- Profil ---------- */
@@ -2225,4 +2227,148 @@ svg {
 .account-cta-ico svg {
   width: 22px;
   height: 22px;
+}
+
+/* ---------- Hover mit der Maus (nur Geräte mit Zeiger) ---------- */
+@media (hover: hover) and (pointer: fine) {
+  .press {
+    cursor: pointer;
+  }
+  .press.is-hover:not(.is-pressed) {
+    transform: scale(var(--hover, 1.02));
+    filter: brightness(1.08);
+  }
+  .press.is-hover:not(.is-pressed)::after {
+    opacity: 0.55;
+    transition-duration: 0.25s;
+  }
+  .press-row.is-hover:not(.is-pressed),
+  .row.press.is-hover:not(.is-pressed) {
+    --hover: 1;
+    background-color: var(--s2);
+    filter: none;
+  }
+  .trip-card.is-hover:not(.is-pressed),
+  .card.press.is-hover:not(.is-pressed),
+  .onb-option.is-hover:not(.is-pressed) {
+    --hover: 1.012;
+  }
+  .icon-btn.is-hover:not(.is-pressed),
+  .chip.is-hover:not(.is-pressed) {
+    --hover: 1.07;
+  }
+  .btn.primary.is-hover:not(.is-pressed) {
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.4),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.25),
+      0 10px 28px rgba(47, 127, 240, 0.45);
+  }
+  .tab:hover:not(.on) {
+    color: var(--text);
+    transform: scale(1.06);
+  }
+  .seg-opt:hover:not(.on) {
+    color: var(--text);
+  }
+  .map-root {
+    cursor: grab;
+  }
+  .map-root.over-country {
+    cursor: pointer;
+  }
+  .map-root:active {
+    cursor: grabbing;
+  }
+}
+
+/* ---------- Anmeldung in Schritten ---------- */
+.auth-panel {
+  margin: 0 16px;
+}
+.auth-step {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-step .field {
+  margin: 0 0 2px;
+}
+.auth-step .auth-msg {
+  margin: 0 4px;
+}
+.auth-google.big {
+  height: 60px;
+  font-size: 17.5px;
+  font-weight: 680;
+  gap: 14px;
+  background-color: #ffffff;
+  background-image: linear-gradient(180deg, #ffffff, #f1f3f6);
+  color: #1f1f1f;
+  box-shadow:
+    inset 0 1px 0 #fff,
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+    0 8px 24px rgba(0, 0, 0, 0.28);
+}
+:root[data-theme='light'] .auth-google.big {
+  box-shadow:
+    inset 0 0 0 1px rgba(15, 25, 40, 0.12),
+    0 6px 18px rgba(20, 30, 50, 0.12);
+}
+.auth-mail {
+  height: 54px;
+  font-size: 16.5px;
+}
+.auth-email-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  max-width: 100%;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--s2);
+  box-shadow: var(--rim);
+  font-size: 15px;
+  font-weight: 600;
+}
+.auth-email-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auth-email-chip small {
+  color: var(--accent);
+  font-size: 13.5px;
+  font-weight: 650;
+  margin-left: 4px;
+}
+.auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px;
+}
+.auth-links .btn {
+  padding: 0 6px;
+  font-size: 14.5px;
+}
+.onb-skip {
+  display: block;
+  margin: 14px auto 0;
+  color: var(--text2);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 10px 16px;
+  border-radius: 999px;
+}
+
+.map-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
 }

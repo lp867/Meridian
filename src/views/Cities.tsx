@@ -126,7 +126,7 @@ export function CitiesPanel() {
                   style={stagger(i)}
                   lead={<Icon name={c.capital ? 'star' : 'building'} />}
                   title={cityName(c)}
-                  sub={[fmtPop(c.pop), c.capital ? t('Hauptstadt') : '', dates.length ? fmtDate(dates.sort().at(-1)) : ''].filter(Boolean).join(' · ')}
+                  sub={[c.pop ? fmtPop(c.pop) : t('Eigener Ort'), c.capital ? t('Hauptstadt') : '', dates.length ? fmtDate(dates.sort().at(-1)) : ''].filter(Boolean).join(' · ')}
                   trail={c.visits.length > 1 ? <span class="badge">{c.visits.length}×</span> : undefined}
                   chevron
                   onClick={() => openCity(c.id)}
@@ -151,39 +151,162 @@ function CityAddSheet({ cc }: { cc?: string }) {
   const [q, setQ] = useState('');
   const [picked, setPicked] = useState<CityRow | null>(null);
   const threshold = data.settings.cityThreshold;
-  const results = useMemo(() => (idx ? idx.search(q, threshold, cc) : []), [idx, q, threshold, cc]);
+  // Grosse Städte zuerst; kleinere (ab 15'000) lassen sich bei einer Suche trotzdem hinzufügen
+  const { big, small } = useMemo(() => {
+    if (!idx) return { big: [] as CityRow[], small: [] as CityRow[] };
+    if (!q.trim()) return { big: idx.search('', threshold, cc), small: [] };
+    const all = idx.search(q, 0, cc);
+    return { big: all.filter((r) => r[5] >= threshold || r[6]), small: all.filter((r) => r[5] < threshold && !r[6]).slice(0, 20) };
+  }, [idx, q, threshold, cc]);
   const have = new Set(data.cities.map((c) => c.id));
 
   if (picked) return <VisitStep row={picked} onBack={() => setPicked(null)} />;
+
+  const row = (r: CityRow, i: number) => {
+    const shown = cityRowName(r);
+    return (
+      <Row
+        key={r[0]}
+        style={stagger(i)}
+        lead={flag(r[2])}
+        leadClass="flag"
+        title={shown}
+        sub={[countryName(r[2]), fmtPop(r[5]), r[6] ? t('Hauptstadt') : '', shown !== r[1] ? r[1] : ''].filter(Boolean).join(' · ')}
+        trail={have.has(r[0]) ? <span class="badge ok">{t('dabei')}</span> : undefined}
+        chevron
+        onClick={() => setPicked(r)}
+      />
+    );
+  };
 
   return (
     <>
       <SheetHeader title={cc ? t('Stadt in {c}', { c: countryName(cc) }) : t('Stadt hinzufügen')} />
       <div style={{ padding: '4px 0 6px' }}>
         <SearchField value={q} onInput={setQ} placeholder={t('Stadt suchen, z. B. Lissabon')} autoFocus />
-        <p class="hint" style={{ marginTop: '8px' }}>
-          {t('Ab {n} Einwohnern · Hauptstädte zählen immer', { n: fmtInt(threshold) })}
-        </p>
       </div>
       <div class="sheet-body">
         {!idx && <p class="hint">{t('Städte werden geladen …')}</p>}
-        {idx && !results.length && <Empty icon="search" title={t('Keine Stadt gefunden')} text={t('Vielleicht ist sie kleiner als die eingestellte Grenze.')} />}
-        <div class="list plain stagger" key={q}>
-          {results.map((r, i) => {
-            const shown = cityRowName(r);
-            return (
-              <Row
-                style={stagger(i)}
-                lead={flag(r[2])}
-                leadClass="flag"
-                title={shown}
-                sub={[countryName(r[2]), fmtPop(r[5]), r[6] ? t('Hauptstadt') : '', shown !== r[1] ? r[1] : ''].filter(Boolean).join(' · ')}
-                trail={have.has(r[0]) ? <span class="badge ok">{t('dabei')}</span> : undefined}
-                chevron
-                onClick={() => setPicked(r)}
-              />
-            );
-          })}
+        {idx && !big.length && !small.length && <Empty icon="search" title={t('Keine Stadt gefunden')} text={t('Halte auf der Karte den Finger auf den Ort gedrückt, um ihn selbst hinzuzufügen.')} />}
+        {big.length > 0 && (
+          <div class="list plain stagger" key={q}>
+            {big.map(row)}
+          </div>
+        )}
+        {small.length > 0 && (
+          <>
+            <SectionTitle>{t('Kleinere Städte (unter {n} Einwohnern)', { n: fmtInt(threshold) })}</SectionTitle>
+            <div class="list plain stagger" key={`s${q}`}>
+              {small.map(row)}
+            </div>
+          </>
+        )}
+        <p class="hint" style={{ marginTop: '14px' }}>
+          {t('Ganz kleiner Ort? Halte auf der Karte den Finger darauf gedrückt (am PC: Rechtsklick).')}
+        </p>
+      </div>
+    </>
+  );
+}
+
+/** Langes Drücken auf die Karte: Stadt in der Nähe wählen oder eigenen Ort anlegen. */
+export function openAddPlace(lon: number, lat: number, cc: string | null) {
+  if (!cc) {
+    toast(t('An dieser Stelle ist kein Land'), true);
+    return;
+  }
+  openSheet(() => <AddPlaceSheet lon={lon} lat={lat} cc={cc} />, { tall: true });
+}
+
+function AddPlaceSheet({ lon, lat, cc }: { lon: number; lat: number; cc: string }) {
+  const idx = useCities();
+  const data = useData();
+  const [picked, setPicked] = useState<CityRow | null>(null);
+  const [name, setName] = useState('');
+  const [date, setDate] = useState('');
+  const have = new Set(data.cities.map((c) => c.id));
+  const nearby = useMemo(() => {
+    if (!idx) return [];
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dist = (r: CityRow) => {
+      const x = Math.sin(toRad(r[3] - lat) / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(r[3])) * Math.sin(toRad(r[4] - lon) / 2) ** 2;
+      return 12742 * Math.asin(Math.sqrt(x));
+    };
+    return idx.rows
+      .filter((r) => Math.abs(r[3] - lat) < 0.6 && Math.abs(r[4] - lon) < 0.9)
+      .map((r) => ({ r, km: dist(r) }))
+      .filter((x) => x.km <= 35)
+      .sort((a, b) => a.km - b.km)
+      .slice(0, 6);
+  }, [idx]);
+
+  if (picked) return <VisitStep row={picked} onBack={() => setPicked(null)} />;
+
+  const addCustom = () => {
+    const n = name.trim();
+    if (!n) return;
+    const city: City = {
+      id: -Date.now(), // eigene Orte: negative IDs
+      name: n,
+      cc,
+      lat: Math.round(lat * 1000) / 1000,
+      lon: Math.round(lon * 1000) / 1000,
+      pop: 0,
+      capital: false,
+      visits: date ? [{ date }] : [],
+      addedAt: Date.now(),
+    };
+    updateData((d) => ({ ...d, cities: [...d.cities, city] }));
+    closeSheet();
+    toast(t('{c} hinzugefügt', { c: n }));
+  };
+
+  return (
+    <>
+      <SheetHeader
+        title={
+          <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '28px' }}>{flag(cc)}</span>
+            {t('Ort hinzufügen')}
+          </span>
+        }
+      />
+      <div class="sheet-body">
+        <p class="hint" style={{ margin: '0 20px 6px' }}>
+          {countryName(cc)}
+        </p>
+        {nearby.length > 0 && (
+          <>
+            <SectionTitle>{t('In der Nähe')}</SectionTitle>
+            <div class="list plain stagger">
+              {nearby.map(({ r, km }, i) => (
+                <Row
+                  key={r[0]}
+                  style={stagger(i)}
+                  lead={<Icon name={r[6] ? 'star' : 'building'} />}
+                  title={cityRowName(r)}
+                  sub={`${fmtPop(r[5])} · ${fmtInt(Math.round(km))} km`}
+                  trail={have.has(r[0]) ? <span class="badge ok">{t('dabei')}</span> : undefined}
+                  chevron
+                  onClick={() => setPicked(r)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+        <SectionTitle>{t('Eigener Ort')}</SectionTitle>
+        <label class="field big">
+          <span>{t('Name des Ortes')}</span>
+          <input value={name} placeholder={t('z. B. Zermatt')} onInput={(e) => setName((e.currentTarget as HTMLInputElement).value)} enterKeyHint="done" />
+        </label>
+        <label class="field">
+          <span>{t('Datum des Besuchs')}</span>
+          <input type="date" value={date} onInput={(e) => setDate((e.currentTarget as HTMLInputElement).value)} />
+        </label>
+        <div class="sheet-actions">
+          <button class="btn primary press" disabled={!name.trim()} onClick={addCustom}>
+            <Icon name="pin" /> {t('Ort hinzufügen')}
+          </button>
         </div>
       </div>
     </>
@@ -292,7 +415,7 @@ function CitySheet({ id }: { id: number }) {
       />
       <div class="sheet-body">
         <p class="hint" style={{ margin: '0 20px 14px', fontSize: '14.5px', color: 'var(--text2)' }}>
-          {countryName(city.cc)} · {tn(city.pop, 'Einwohner', 'Einwohner')}
+          {countryName(city.cc)} · {city.pop ? tn(city.pop, 'Einwohner', 'Einwohner') : t('Eigener Ort')}
           {city.capital ? ` · ${t('Hauptstadt')}` : ''}
         </p>
         <SectionTitle action={t('Besuch hinzufügen')} onAction={() => setAdding(true)}>
