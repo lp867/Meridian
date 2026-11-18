@@ -10,6 +10,7 @@ import { Onboarding } from './views/Onboarding';
 import { useBackupWarning } from './views/shared';
 import { finishConfirmedAction } from './views/Account';
 import { consumeConfirmationLink } from './lib/cloud';
+import { onShowCitiesOnMap } from './lib/mapEvents';
 import { toast } from './ui/Toast';
 import { useData, useMeta } from './lib/store';
 import { applyLang } from './lib/i18n';
@@ -51,6 +52,8 @@ export function App() {
     setTab(next);
     setEntering(next);
   };
+  // «Auf der Karte wählen» von anderen Bildschirmen: zur Karte wechseln
+  useEffect(() => onShowCitiesOnMap(() => select('map')));
 
   if (!meta.onboarded) {
     return (

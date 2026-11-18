@@ -2,10 +2,15 @@ import { useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { t } from '../lib/i18n';
 
-let show: ((msg: string, err: boolean) => void) | null = null;
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+let show: ((msg: string, err: boolean, action?: ToastAction) => void) | null = null;
 let timer = 0;
 
-export const toast = (msg: string, err = false) => show?.(msg, err);
+/** Meldung oben; optional mit einer Aktion rechts (z. B. «Rückgängig»). */
+export const toast = (msg: string, err = false, action?: ToastAction) => show?.(msg, err, action);
 
 type Drag = { x: number; y: number; t: number; dx: number; dy: number; vx: number; vy: number; axis: 'x' | 'y' | null };
 
@@ -14,7 +19,7 @@ type Drag = { x: number; y: number; t: number; dx: number; dy: number; vx: numbe
  * nach unten gibt sie nur leicht nach. Zusätzlich (wie bei Samsung) seitlich wegwischbar.
  */
 export function ToastHost() {
-  const [state, setState] = useState<{ msg: string; err: boolean; on: boolean }>({ msg: '', err: false, on: false });
+  const [state, setState] = useState<{ msg: string; err: boolean; on: boolean; action?: ToastAction }>({ msg: '', err: false, on: false });
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<Drag | null>(null);
 
@@ -33,10 +38,10 @@ export function ToastHost() {
     clearTimeout(timer);
     timer = window.setTimeout(hide, ms);
   };
-  show = (msg, err) => {
+  show = (msg, err, action) => {
     reset();
-    setState({ msg, err, on: true });
-    autoHide(err ? 5000 : 3200);
+    setState({ msg, err, on: true, action });
+    autoHide(err || action ? 5000 : 3200);
   };
 
   const onDown = (e: PointerEvent) => {
@@ -137,6 +142,20 @@ export function ToastHost() {
         </div>
         <div class="notif-text">{state.msg}</div>
       </div>
+      {state.action && (
+        <button
+          class="notif-action press"
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            state.action?.run();
+            hide();
+          }}
+        >
+          {state.action.label}
+        </button>
+      )}
     </div>
   );
 }

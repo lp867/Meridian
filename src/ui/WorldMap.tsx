@@ -3,7 +3,7 @@
 import { getStatic } from '../lib/geo';
 import { countryGeometry, type Box, type MapArc, type MapDot } from './MapCanvas';
 export { WorldMap } from './MapCanvas';
-export type { Box, MapApi, MapArc, MapDot, MapPress } from './MapCanvas';
+export type { Box, CityLayer, MapApi, MapArc, MapDot, MapPress } from './MapCanvas';
 
 /** Statische Ausschnittskarte (Land, Trip, Flug) mit gezeichneten Flugbögen. */
 export function MiniMap({

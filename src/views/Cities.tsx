@@ -9,10 +9,11 @@ import { Empty, Row, SearchField, SectionTitle, stagger } from '../ui/kit';
 import { SheetHeader, closeSheet, confirmSheet, openSheet } from '../ui/Sheet';
 import { toast } from '../ui/Toast';
 import { useCities } from './shared';
+import { showCitiesOnMap } from '../lib/mapEvents';
 import { NoteCard } from './Countries';
 import type { City, CityVisit } from '../lib/types';
 
-function addCity(row: CityRow, visit: CityVisit) {
+export function addCity(row: CityRow, visit: CityVisit) {
   updateData((d) => {
     const existing = d.cities.find((c) => c.id === row[0]);
     if (existing) {
@@ -136,6 +137,18 @@ export function CitiesPanel({ q = '' }: { q?: string }) {
   return (
     <>
       {!q && <QuickAdd />}
+      {!q && (
+        <button class="map-pick press" onClick={() => showCitiesOnMap(null)}>
+          <span class="mp-icon">
+            <Icon name="globe" stroke={2} />
+          </span>
+          <span class="mp-text">
+            <b>{t('Auf der Karte wählen')}</b>
+            <small>{t('Alle Städte einblenden und antippen')}</small>
+          </span>
+          <Icon name="chevR" />
+        </button>
+      )}
 
       {!q && suggestions.length > 0 && (
         <>

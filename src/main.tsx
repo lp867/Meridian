@@ -11,6 +11,7 @@ import { migrateAirports } from './lib/importFv';
 import { applyLang } from './lib/i18n';
 import { applyTheme } from './lib/theme';
 import { polyfillCountryFlagEmojis } from 'country-flag-emoji-polyfill';
+import { watchKeyboard } from './lib/keyboard';
 
 // Nicht in fremden Seiten einbetten lassen (Schutz vor Clickjacking)
 if (import.meta.env.PROD && window.top !== window.self) {
@@ -20,6 +21,7 @@ if (import.meta.env.PROD && window.top !== window.self) {
 
 installSpringVars();
 installPressFeedback();
+watchKeyboard();
 // Windows zeigt keine Flaggen-Emojis – dann eine kleine Flaggen-Schrift nachladen
 polyfillCountryFlagEmojis('Twemoji Country Flags', `${import.meta.env.BASE_URL}fonts/TwemojiCountryFlags.woff2`);
 

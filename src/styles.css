@@ -2126,7 +2126,8 @@ svg {
   .map-root {
     cursor: grab;
   }
-  .map-root.over-country {
+  .map-root.over-country,
+  .map-root.over-city {
     cursor: pointer;
   }
   .map-root:active {
@@ -2736,4 +2737,232 @@ svg {
 }
 .city-summary {
   margin: 14px 22px 0;
+}
+
+/* ---------- Bildschirmtastatur offen: Tab-Leiste bleibt unten, Platzfresser klappen weg ---------- */
+.kb-open .tabbar,
+.kb-open .map-fabs {
+  visibility: hidden;
+  transition: none;
+}
+.kb-open .overview {
+  display: none;
+}
+.kb-open .screen {
+  padding-bottom: 16px;
+}
+
+/* ---------- Meldung mit Aktion («Rückgängig») ---------- */
+.notif-action {
+  flex: none;
+  align-self: center;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--accent);
+  background: var(--accent-tint);
+  cursor: pointer;
+}
+
+/* ---------- Karte: Städte-Knopf ---------- */
+.map-fabs {
+  align-items: flex-end;
+}
+.fab-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 18px 0 15px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 650;
+  color: #fff;
+  background-color: var(--accent-deep);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 60%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.22),
+    0 8px 22px rgba(47, 127, 240, 0.32),
+    0 2px 6px rgba(0, 0, 0, 0.25);
+  --press: 0.96;
+}
+.fab-pill svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* ---------- Karte: Leiste im Städte-Modus ---------- */
+.city-panel {
+  position: absolute;
+  z-index: 10;
+  top: calc(var(--safe-t) + 10px);
+  left: 12px;
+  right: 12px;
+  max-width: 560px;
+  margin: 0 auto;
+  border-radius: var(--r-lg);
+  padding: 12px 12px 10px 16px;
+  animation: panel-in 0.24s ease both;
+}
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.cp-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cp-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cp-title b {
+  font-size: 17px;
+  font-weight: 720;
+  letter-spacing: -0.015em;
+}
+.cp-title span {
+  font-size: 13px;
+  color: var(--text2);
+}
+.cp-filters {
+  display: flex;
+  gap: 8px;
+  margin: 10px -12px 0 -16px;
+  padding: 0 12px 0 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.cp-filters::-webkit-scrollbar {
+  display: none;
+}
+.cp-filters .chip {
+  height: 34px;
+  padding: 0 11px 0 12px;
+  gap: 6px;
+  color: var(--text);
+  background-color: var(--s3);
+}
+.cp-filters .chip.on {
+  color: #d6e8ff;
+  background-color: var(--accent-tint);
+}
+.cp-filters .chip svg {
+  flex: none;
+}
+.cp-filters .chip > svg:last-child {
+  opacity: 0.6;
+}
+.cp-chip-t {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-flag {
+  font-size: 16px;
+  line-height: 1;
+}
+.cp-head .cp-search {
+  width: 36px;
+  height: 36px;
+  margin-right: -4px;
+  background-color: var(--s3);
+  box-shadow: var(--rim);
+}
+.cp-head .cp-search svg {
+  width: 18px;
+  height: 18px;
+}
+.cp-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 9px 0 0;
+  font-size: 12.5px;
+  color: var(--text2);
+}
+.cp-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text2);
+  background: var(--s1);
+}
+.cp-dot.on {
+  margin-left: 8px;
+  border: 2px solid var(--dot-stroke);
+  background: var(--dot);
+  width: 10px;
+  height: 10px;
+}
+:root[data-theme='light'] .cp-filters .chip.on {
+  color: var(--accent);
+}
+:root[data-theme='light'] .cp-dot.on {
+  background: #0e4096;
+  border-color: #fff;
+  box-shadow: 0 0 0 1px rgba(15, 25, 40, 0.15);
+}
+
+/* ---------- Städte-Tab: auf der Karte wählen ---------- */
+.map-pick {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: calc(100% - 32px);
+  margin: 10px 16px 0;
+  padding: 10px 14px 10px 10px;
+  border-radius: var(--r-md);
+  text-align: left;
+  background-color: var(--s1);
+  background-image: var(--sheen);
+  box-shadow: var(--rim);
+  color: var(--text);
+  --press: 0.985;
+}
+.map-pick .mp-icon {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(145deg, #6aaaff, #2a6fe0);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.map-pick .mp-icon svg {
+  width: 21px;
+  height: 21px;
+}
+.map-pick .mp-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.map-pick b {
+  font-size: 15px;
+  font-weight: 650;
+}
+.map-pick small {
+  font-size: 13px;
+  color: var(--text2);
+}
+.map-pick > svg:last-child {
+  width: 18px;
+  height: 18px;
+  color: var(--text3);
 }

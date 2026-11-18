@@ -121,4 +121,5 @@ export interface Meta {
   pendingAction?: { action: 'delete-account' | 'wipe-data'; email: string; at: number }; // wartet auf Bestätigung per E-Mail
   lang: 'de' | 'en' | 'fr' | 'es';
   theme: 'system' | 'dark' | 'light';
+  mapCityMin?: number; // Städte-Modus der Karte: Mindestgrösse (Einwohner)
 }

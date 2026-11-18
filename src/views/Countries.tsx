@@ -11,6 +11,7 @@ import { useNav, type Nav } from '../ui/Stack';
 import { MiniMap, type Box } from '../ui/WorldMap';
 import { goBackThen } from '../lib/backstack';
 import { CitiesPanel, openCityAdd, openCity } from './Cities';
+import { showCitiesOnMap } from '../lib/mapEvents';
 import type { AppData } from '../lib/types';
 
 type Status = 'none' | 'visited' | 'wish';
@@ -105,8 +106,8 @@ export function CountrySheet({ code, nav }: { code: string; nav: Nav }) {
           </div>
         )}
         <div class="sheet-actions" style={{ marginTop: '16px' }}>
-          <button class="btn press" onClick={() => goBackThen(() => openCityAdd(code))}>
-            <Icon name="plus" /> {t('Stadt hinzufügen')}
+          <button class="btn press" onClick={() => goBackThen(() => showCitiesOnMap(code))}>
+            <Icon name="building" /> {t('Städte wählen')}
           </button>
           <button class="btn primary press" onClick={() => goBackThen(() => nav.push(<CountryDetail code={code} />))}>
             {t('Details')} <Icon name="chevR" />
@@ -200,6 +201,11 @@ export function CountryDetail({ code }: { code: string }) {
           {t('Noch keine Städte. Es zählen Städte ab {n} Einwohnern und alle Hauptstädte.', { n: fmtInt(data.settings.cityThreshold) })}
         </p>
       )}
+      <div class="sheet-actions" style={{ marginTop: '10px' }}>
+        <button class="btn press" onClick={() => showCitiesOnMap(code)}>
+          <Icon name="globe" /> {t('Auf der Karte wählen')}
+        </button>
+      </div>
 
 
       {neighbours.length > 0 && (

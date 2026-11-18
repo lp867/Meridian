@@ -12,6 +12,7 @@ import { Icon } from '../ui/Icon';
 import { LargeTitle, NavBar, Row, SectionTitle } from '../ui/kit';
 import { confirmSheet, openSheet, SheetHeader, closeSheet } from '../ui/Sheet';
 import { toast } from '../ui/Toast';
+import { ChoiceSheet } from '../ui/ChoiceSheet';
 import { useNav } from '../ui/Stack';
 import { FlightsScreen, openDataCheck, openImport } from './Flights';
 import { GoogleLogo, openAuth, openConfirmByMail, useAccount } from './Account';
@@ -284,32 +285,6 @@ export function ProfileScreen() {
 }
 
 // ---------- Auswahl-Sheets ----------
-function ChoiceSheet({ title, hint, options, value, onPick }: { title: string; hint?: string; options: { value: string; label: ComponentChildren }[]; value: string; onPick: (v: string) => void }) {
-  return (
-    <>
-      <SheetHeader title={title} />
-      <div class="sheet-body">
-        <div class="list">
-          {options.map((o) => (
-            <Row
-              title={o.label}
-              trail={
-                <span class={`check ${o.value === value ? 'on' : ''}`}>
-                  <Icon name="check" stroke={3} />
-                </span>
-              }
-              onClick={() => {
-                onPick(o.value);
-                closeSheet();
-              }}
-            />
-          ))}
-        </div>
-        {hint && <p class="hint">{hint}</p>}
-      </div>
-    </>
-  );
-}
 
 function ThemeSheet() {
   const meta = useMeta();

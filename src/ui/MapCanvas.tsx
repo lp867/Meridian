@@ -21,7 +21,22 @@ export interface MapArc {
   cls?: string;
 }
 export interface MapApi {
-  fitBox: (box: Box | null, animate?: boolean) => void;
+  /** onlyIn: nur hineinzoomen, nie hinaus (z. B. Land antippen im Städte-Modus). */
+  fitBox: (box: Box | null, animate?: boolean, onlyIn?: boolean) => void;
+  /** Kurzer, ruhiger Ring um eine Stadt (z. B. nach dem Hinzufügen). */
+  pulse: (cityId: number) => void;
+}
+/**
+ * Städte-Ebene: alle wählbaren Städte, nach Wichtigkeit sortiert (besuchte zuerst, dann nach Grösse).
+ * Beim Malen werden sie je nach Zoom ausgedünnt, damit nichts überlappt.
+ */
+export interface CityLayer {
+  n: number;
+  x: Float32Array; // Kartenkoordinaten
+  y: Float32Array;
+  id: Float64Array;
+  flags: Uint8Array; // 1 = besucht, 2 = Hauptstadt
+  label: (i: number) => string;
 }
 export interface MapPress {
   lon: number;
@@ -35,7 +50,9 @@ interface Props {
   dots?: MapDot[];
   arcs?: MapArc[];
   airports?: MapDot[];
+  cities?: CityLayer | null;
   onCountry?: (code: string | null) => void;
+  onCity?: (id: number) => void;
   onLongPress?: (p: MapPress) => void;
   initialBox?: Box | null;
   apiRef?: (api: MapApi) => void;
@@ -115,8 +132,15 @@ interface Palette {
   dot: RGB;
   dotStroke: RGB;
   small: RGB;
+  cityFill: RGB;
+  cityOn: RGB; // besuchte Stadt im Städte-Modus
+  cityOnRing: RGB;
   light: boolean;
 }
+
+const TAU = Math.PI * 2;
+const MAX_CITIES = 900; // höchstens so viele Punkte pro Bild
+const LABEL_FONT = '600 11.5px "Inter Variable", Inter, system-ui, sans-serif';
 function readPalette(): Palette {
   const cs = getComputedStyle(document.documentElement);
   const v = (n: string) => parseColor(cs.getPropertyValue(n));
@@ -134,13 +158,16 @@ function readPalette(): Palette {
     dot: v('--dot'),
     dotStroke: v('--dot-stroke'),
     small: mix(land, text, 0.28),
+    cityFill: light ? [255, 255, 255] : mix(v('--bg'), land, 0.45),
+    cityOn: light ? [14, 64, 150] : v('--dot'),
+    cityOnRing: light ? [255, 255, 255] : v('--dot-stroke'),
     light,
   };
 }
 
 const ease = (t: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, t)), 3);
 
-export function WorldMap({ status, selected, dots, arcs, airports, onCountry, onLongPress, initialBox, apiRef, padTop = 20, padBottom = 20 }: Props) {
+export function WorldMap({ status, selected, dots, arcs, airports, cities, onCountry, onCity, onLongPress, initialBox, apiRef, padTop = 20, padBottom = 20 }: Props) {
   const root = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const S = useRef({
@@ -158,13 +185,19 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
     dots: [] as MapDot[],
     arcs: [] as { key: string | number; path: Path2D; cls?: string }[],
     airports: [] as MapDot[],
+    city: null as CityLayer | null,
+    // im letzten Bild gezeichnete Städte (Bildschirmkoordinaten) – für Treffer und Beschriftung
+    pl: { x: new Float32Array(MAX_CITIES), y: new Float32Array(MAX_CITIES), lx: new Float32Array(MAX_CITIES), i: new Int32Array(MAX_CITIES), n: 0 },
+    grid: new Int32Array(0),
+    labelW: new Map<number, number>(),
+    pulse: null as { id: number; t0: number } | null,
     raf: 0,
     zoom: null as ZoomBehavior<HTMLDivElement, unknown> | null,
     animating: 0,
     started: false,
   }).current;
-  const props = useRef({ onCountry, onLongPress, padTop, padBottom, initialBox });
-  props.current = { onCountry, onLongPress, padTop, padBottom, initialBox };
+  const props = useRef({ onCountry, onCity, onLongPress, padTop, padBottom, initialBox });
+  props.current = { onCountry, onCity, onLongPress, padTop, padBottom, initialBox };
   const hitCtx = useRef<CanvasRenderingContext2D | null>(null);
 
   const target = (code: string | null): RGB => {
@@ -273,16 +306,202 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
       ctx.stroke();
     }
     // Städte
-    for (const d of S.dots) {
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, 3.4 * lw, 0, Math.PI * 2);
-      ctx.fillStyle = css(pal.dot);
-      ctx.fill();
-      ctx.lineWidth = 1.5 * lw;
-      ctx.strokeStyle = css(pal.dotStroke);
-      ctx.stroke();
+    if (S.city) drawCities(ctx, now, rel);
+    else
+      for (const d of S.dots) {
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 3.4 * lw, 0, TAU);
+        ctx.fillStyle = css(pal.dot);
+        ctx.fill();
+        ctx.lineWidth = 1.5 * lw;
+        ctx.strokeStyle = css(pal.dotStroke);
+        ctx.stroke();
+      }
+    if (S.anim.size || S.pulse || (S.sel && now - S.selT0 < 260)) S.raf = requestAnimationFrame(draw);
+  };
+
+  /**
+   * Städte-Ebene in Bildschirmkoordinaten. In einem Durchgang nach Wichtigkeit:
+   * Punkt nur mit genug Abstand setzen, den Namen gleich mitplatzieren – so bekommen die grossen
+   * Städte ihre Beschriftung, und kleinere Punkte weichen den Namen aus.
+   */
+  const drawCities = (ctx: CanvasRenderingContext2D, now: number, rel: number) => {
+    const L = S.city!;
+    const { t, w, h, dpr, pal, pl: P } = S;
+    if (!pal) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.font = LABEL_FONT;
+    const minD = rel < 1.6 ? 26 : rel < 3.5 ? 22 : rel < 8 ? 19 : 17;
+    const maxLabels = rel < 1.6 ? 14 : rel < 3.5 ? 28 : 44;
+    const sc = rel < 1.6 ? 0.85 : 1;
+    const cell = minD;
+    const cols = Math.ceil(w / cell) + 3;
+    const rows = Math.ceil(h / cell) + 3;
+    if (S.grid.length < cols * rows) S.grid = new Int32Array(cols * rows);
+    const grid = S.grid;
+    grid.fill(-1, 0, cols * rows);
+    const min2 = minD * minD;
+    const boxes: number[] = []; // Namen als [x0, y0, x1, y1]
+
+    const inLabel = (x: number, y: number, pad: number) => {
+      for (let b = 0; b < boxes.length; b += 4) if (x > boxes[b] - pad && x < boxes[b + 2] + pad && y > boxes[b + 1] - pad && y < boxes[b + 3] + pad) return true;
+      return false;
+    };
+    const labelHits = (x0: number, y0: number, x1: number, y1: number) => {
+      for (let b = 0; b < boxes.length; b += 4) if (x0 < boxes[b + 2] + 4 && x1 > boxes[b] - 4 && y0 < boxes[b + 3] + 1 && y1 > boxes[b + 1] - 1) return true;
+      return false;
+    };
+    const dotHits = (x0: number, y0: number, x1: number, y1: number, self: number) => {
+      const c0 = Math.max(0, Math.floor((x0 + 4) / cell));
+      const c1 = Math.min(cols - 1, Math.floor((x1 + 12) / cell));
+      const r0 = Math.max(0, Math.floor((y0 + 4) / cell));
+      const r1 = Math.min(rows - 1, Math.floor((y1 + 12) / cell));
+      for (let yy = r0; yy <= r1; yy++)
+        for (let xx = c0; xx <= c1; xx++) {
+          const j = grid[yy * cols + xx];
+          if (j < 0 || j === self) continue;
+          if (P.x[j] > x0 - 5 && P.x[j] < x1 + 5 && P.y[j] > y0 - 4 && P.y[j] < y1 + 4) return true;
+        }
+      return false;
+    };
+
+    let n = 0;
+    let labels = 0;
+    for (let i = 0; i < L.n && n < MAX_CITIES; i++) {
+      const sx = L.x[i] * t.k + t.x;
+      const sy = L.y[i] * t.k + t.y;
+      if (sx < -8 || sx > w + 8 || sy < -8 || sy > h + 8) continue;
+      const gx = Math.floor((sx + 8) / cell);
+      const gy = Math.floor((sy + 8) / cell);
+      const f = L.flags[i];
+      // Besuchte immer zeigen, alle anderen nur mit genug Abstand und nicht auf einem Namen
+      if (!(f & 1)) {
+        let blocked = false;
+        for (let yy = Math.max(0, gy - 1); yy <= Math.min(rows - 1, gy + 1) && !blocked; yy++)
+          for (let xx = Math.max(0, gx - 1); xx <= Math.min(cols - 1, gx + 1); xx++) {
+            const j = grid[yy * cols + xx];
+            if (j < 0) continue;
+            const dx = P.x[j] - sx;
+            const dy = P.y[j] - sy;
+            if (dx * dx + dy * dy < min2) {
+              blocked = true;
+              break;
+            }
+          }
+        if (blocked || (boxes.length && inLabel(sx, sy, 6))) continue;
+      }
+      grid[gy * cols + gx] = n;
+      P.x[n] = sx;
+      P.y[n] = sy;
+      P.i[n] = i;
+      P.lx[n] = NaN;
+      if (labels < maxLabels && sx > 0 && sx < w && sy > 0 && sy < h) {
+        const text = L.label(i);
+        let tw = S.labelW.get(i);
+        if (tw === undefined) {
+          tw = text ? ctx.measureText(text).width : 0;
+          S.labelW.set(i, tw);
+        }
+        if (tw > 0) {
+          const gap = (f & 2 ? 9 : 8) * sc;
+          const y0 = sy - 7;
+          const y1 = sy + 7;
+          let x0 = sx + gap;
+          if (x0 + tw > w - 4 || labelHits(x0, y0, x0 + tw, y1) || dotHits(x0, y0, x0 + tw, y1, n)) {
+            x0 = sx - gap - tw;
+            if (x0 < 4 || labelHits(x0, y0, x0 + tw, y1) || dotHits(x0, y0, x0 + tw, y1, n)) x0 = NaN;
+          }
+          if (!Number.isNaN(x0)) {
+            boxes.push(x0, y0, x0 + tw, y1);
+            P.lx[n] = x0;
+            labels++;
+          }
+        }
+      }
+      n++;
     }
-    if (S.anim.size || (S.sel && now - S.selT0 < 260)) S.raf = requestAnimationFrame(draw);
+    P.n = n;
+
+    // noch nicht besucht: hohl
+    ctx.beginPath();
+    for (let k = 0; k < n; k++) {
+      const fk = L.flags[P.i[k]];
+      if (fk & 1) continue;
+      const r = (fk & 2 ? 4.6 : 3.7) * sc;
+      ctx.moveTo(P.x[k] + r, P.y[k]);
+      ctx.arc(P.x[k], P.y[k], r, 0, TAU);
+    }
+    ctx.fillStyle = css(pal.cityFill);
+    ctx.fill();
+    ctx.lineWidth = 1.8;
+    ctx.strokeStyle = css(pal.text, pal.light ? 0.6 : 0.88);
+    ctx.stroke();
+    // besucht: gefüllt wie bisher
+    ctx.beginPath();
+    for (let k = 0; k < n; k++) {
+      const fk = L.flags[P.i[k]];
+      if (!(fk & 1)) continue;
+      const r = (fk & 2 ? 5 : 4.2) * sc;
+      ctx.moveTo(P.x[k] + r, P.y[k]);
+      ctx.arc(P.x[k], P.y[k], r, 0, TAU);
+    }
+    ctx.fillStyle = css(pal.cityOn);
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = css(pal.cityOnRing);
+    ctx.stroke();
+
+    // Namen mit Lichthof, damit sie auf jeder Fläche lesbar sind
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3;
+    const halo = css(pal.border, 0.9);
+    const ink = css(pal.text);
+    const inkSoft = css(pal.text, 0.78);
+    for (let k = 0; k < n; k++) {
+      if (Number.isNaN(P.lx[k])) continue;
+      const i = P.i[k];
+      const text = L.label(i);
+      ctx.strokeStyle = halo;
+      ctx.strokeText(text, P.lx[k], P.y[k]);
+      ctx.fillStyle = L.flags[i] & 1 ? ink : inkSoft;
+      ctx.fillText(text, P.lx[k], P.y[k]);
+    }
+
+    // ruhiger Ring nach dem Hinzufügen
+    if (S.pulse) {
+      const e = (now - S.pulse.t0) / 560;
+      if (e >= 1) S.pulse = null;
+      else
+        for (let k = 0; k < n; k++)
+          if (L.id[P.i[k]] === S.pulse.id) {
+            ctx.beginPath();
+            ctx.arc(P.x[k], P.y[k], 5 + 13 * ease(e), 0, TAU);
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = css(pal.visitedHi, 0.75 * (1 - e));
+            ctx.stroke();
+            break;
+          }
+    }
+  };
+
+  /** Nächste gezeichnete Stadt am Bildschirmpunkt (oder null). */
+  const cityAt = (px: number, py: number, radius: number): number | null => {
+    const P = S.pl;
+    if (!S.city) return null;
+    let best = -1;
+    let bestD = radius * radius;
+    for (let k = 0; k < P.n; k++) {
+      const dx = P.x[k] - px;
+      const dy = P.y[k] - py;
+      const d = dx * dx + dy * dy;
+      if (d <= bestD) {
+        bestD = d;
+        best = k;
+      }
+    }
+    return best < 0 ? null : S.city.id[P.i[best]];
   };
   const redraw = () => {
     if (!S.raf) S.raf = requestAnimationFrame(draw);
@@ -367,10 +586,11 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
     z.transform(sel, start);
   };
 
-  const fitBox = (box: Box | null, animate = true) => {
+  const fitBox = (box: Box | null, animate = true, onlyIn = false) => {
     if (!S.w || !S.zoom || !root.current) return;
     const sel = select(root.current);
     const to = boxTransform(box);
+    if (onlyIn && to.k <= S.t.k * 1.15) return;
     if (!animate || reducedMotion()) {
       S.zoom.transform(sel, to);
       return;
@@ -393,7 +613,13 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
   };
 
   useEffect(() => {
-    apiRef?.({ fitBox });
+    apiRef?.({
+      fitBox,
+      pulse: (id) => {
+        S.pulse = { id, t0: performance.now() };
+        redraw();
+      },
+    });
   });
 
   // ---------- Daten -> Zustand ----------
@@ -420,6 +646,13 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
       redraw();
     }
   }, [selected]);
+
+  useEffect(() => {
+    S.city = cities ?? null;
+    S.labelW.clear();
+    if (!S.city) S.pl.n = 0;
+    redraw();
+  }, [cities]);
 
   useEffect(() => {
     S.dots = dots ?? [];
@@ -489,8 +722,11 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
     if (hoverRaf.current) return;
     hoverRaf.current = requestAnimationFrame(() => {
       hoverRaf.current = 0;
+      const r = root.current!.getBoundingClientRect();
+      const overCity = cityAt(hoverAt.current[0] - r.left, hoverAt.current[1] - r.top, 10) !== null;
+      root.current?.classList.toggle('over-city', overCity);
       const [mx, my] = toMap(hoverAt.current[0], hoverAt.current[1]);
-      const code = hitTest(mx, my);
+      const code = overCity ? null : hitTest(mx, my);
       if (code !== S.hover) {
         S.hover = code;
         root.current?.classList.toggle('over-country', !!code);
@@ -516,6 +752,15 @@ export function WorldMap({ status, selected, dots, arcs, airports, onCountry, on
     if (lp.current?.fired) {
       lp.current = null;
       return;
+    }
+    // Städte-Modus: Punkt antippen (grosszügige Trefferfläche für Finger)
+    if (S.city && props.current.onCity) {
+      const r = root.current!.getBoundingClientRect();
+      const id = cityAt(e.clientX - r.left, e.clientY - r.top, (e as PointerEvent).pointerType === 'mouse' ? 12 : 22);
+      if (id !== null) {
+        props.current.onCity(id);
+        return;
+      }
     }
     const [mx, my] = toMap(e.clientX, e.clientY);
     props.current.onCountry?.(hitTest(mx, my));
