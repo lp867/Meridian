@@ -50,6 +50,15 @@ async function explain(r: Response) {
   }
 }
 
+/** Sicherheitsnetz: Reisedaten nie in ein öffentliches Repo schreiben. */
+async function ensurePrivate(repo: string, token: string) {
+  api(repo, 'x'); // prüft den Repo-Namen
+  const r = await fetch(`https://api.github.com/repos/${repo.trim()}`, { headers: headers(token), cache: 'no-store' });
+  if (!r.ok) throw new Error(await explain(r));
+  const info = (await r.json()) as { private?: boolean };
+  if (info.private !== true) throw new Error(t('Das Repo ist öffentlich. Aus Datenschutzgründen sichert Meridian nur in private Repos.'));
+}
+
 async function currentSha(repo: string, path: string, token: string): Promise<string | undefined> {
   const r = await fetch(api(repo, path), { headers: headers(token), cache: 'no-store' });
   if (r.status === 404) return undefined; // Datei (oder ganzes Repo) noch leer
@@ -65,6 +74,7 @@ export async function backupToGithub(): Promise<void> {
     const m = metaStore.get();
     const data = dataStore.get();
     try {
+      await ensurePrivate(m.githubRepo, m.githubToken);
       const sha = await currentSha(m.githubRepo, m.githubPath, m.githubToken);
       const stamp = new Date().toLocaleString('de-CH');
       const r = await fetch(api(m.githubRepo, m.githubPath), {

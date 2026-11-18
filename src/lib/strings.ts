@@ -395,6 +395,12 @@ export const STRINGS: Record<string, [string, string, string]> = {
   'Ungültiger Repo-Name': ['Invalid repo name', 'Nom de dépôt invalide', 'Nombre de repositorio no válido'],
   'Ungültiger Dateiname': ['Invalid file name', 'Nom de fichier invalide', 'Nombre de archivo no válido'],
 
+  'Das Repo ist öffentlich. Aus Datenschutzgründen sichert Meridian nur in private Repos.': [
+    'This repo is public. To protect your privacy, Meridian only backs up to private repos.',
+    'Ce dépôt est public. Pour protéger ta vie privée, Meridian sauvegarde uniquement dans des dépôts privés.',
+    'Este repositorio es público. Por privacidad, Meridian solo guarda copias en repositorios privados.',
+  ],
+
   // ---------- Profil ----------
   'Name hinzufügen': ['Add your name', 'Ajouter ton nom', 'Añade tu nombre'],
   Darstellung: ['Appearance', 'Apparence', 'Apariencia'],
