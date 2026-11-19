@@ -3198,3 +3198,15 @@ svg {
     radial-gradient(45% 50% at 70% 62%, #8a7a52 0 35%, transparent 70%),
     linear-gradient(160deg, #2c4a2b, #3c5530 50%, #12324f);
 }
+
+/* Breite Bildschirme: neben der Tab-Leiste ist unten Platz – Quellenangabe flach in die Ecke,
+   Kartenknöpfe ebenfalls nach unten (wie bei Google Maps) */
+@media (min-width: 860px) {
+  .map-attrib {
+    bottom: calc(10px + var(--safe-b));
+    max-width: calc(50vw - 244px);
+  }
+  .map-fabs {
+    bottom: calc(18px + var(--safe-b));
+  }
+}
