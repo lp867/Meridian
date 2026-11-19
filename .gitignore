@@ -10,3 +10,15 @@ dist/
 KONZEPT.md
 /*.csv
 /meridian-*.json
+
+# Android: Build-Ordner, lokale Pfade und der Signaturschlüssel (nie veröffentlichen, aber sichern!)
+android/.gradle/
+android/build/
+android/app/build/
+android/.idea/
+android/.kotlin/
+android/local.properties
+android/keystore.properties
+android/*.jks
+*.apk
+*.aab

@@ -8,10 +8,11 @@ import { installSpringVars } from './lib/spring';
 import { installPressFeedback } from './ui/Toast';
 import { initCloud } from './lib/cloud';
 import { migrateAirports } from './lib/importFv';
-import { applyLang } from './lib/i18n';
+import { applyLang, guessLang } from './lib/i18n';
 import { applyTheme } from './lib/theme';
 import { polyfillCountryFlagEmojis } from 'country-flag-emoji-polyfill';
 import { watchKeyboard } from './lib/keyboard';
+import { detectAndroidApp } from './lib/platform';
 
 // Nicht in fremden Seiten einbetten lassen (Schutz vor Clickjacking)
 if (import.meta.env.PROD && window.top !== window.self) {
@@ -19,6 +20,10 @@ if (import.meta.env.PROD && window.top !== window.self) {
   throw new Error('framed');
 }
 
+// Sprache sofort setzen, nicht erst nach dem Laden der Daten: sonst hält Chrome die Seite
+// für deutsch und bietet auf anderssprachigen Geräten «Übersetzen» an
+document.documentElement.lang = guessLang();
+detectAndroidApp();
 installSpringVars();
 installPressFeedback();
 watchKeyboard();

@@ -16,6 +16,7 @@ import { ChoiceSheet } from '../ui/ChoiceSheet';
 import { useNav } from '../ui/Stack';
 import { FlightsScreen, openDataCheck, openImport } from './Flights';
 import { GoogleLogo, openAuth, openConfirmByMail, useAccount } from './Account';
+import { APK_URL, inAndroidApp, isAppleMobile } from '../lib/platform';
 import type { AppData, Meta } from '../lib/types';
 
 const THRESHOLDS = [15000, 25000, 50000, 100000, 250000];
@@ -273,6 +274,10 @@ export function ProfileScreen() {
       <div class="list">
         <Row lead={<Icon name="info" />} title="Meridian" trail={<Value>{__APP_VERSION__}</Value>} />
         <Row lead={<Icon name="shield" />} title={t('Datenschutz & Datenquellen')} chevron onClick={() => openSheet(() => <AboutSheet />)} />
+        {/* Bewusst unauffällig hier unten: für die meisten reicht die Website bzw. «Zum Startbildschirm» */}
+        {!inAndroidApp() && !isAppleMobile() && (
+          <Row lead={<Icon name="phone" />} title={t('Android-App')} chevron onClick={() => openSheet(() => <AndroidSheet />)} />
+        )}
       </div>
 
       {/* Löschen – bewusst ganz unten und getrennt */}
@@ -368,6 +373,37 @@ function AboutSheet() {
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a>),{' '}
           <a href="https://s2maps.eu" target="_blank" rel="noreferrer">Sentinel-2 cloudless 2016</a> © EOX IT Services GmbH (CC BY 4.0, {t('enthält veränderte Copernicus-Sentinel-Daten 2016')}).{' '}
           {t('Diese Bilder werden nur geladen, wenn du die Ansicht auswählst. Den Standort fragt Meridian nur auf Knopfdruck ab, er bleibt auf deinem Gerät.')}
+        </p>
+      </div>
+    </>
+  );
+}
+
+/** APK-Download der Android-App mit kurzer Anleitung. */
+function AndroidSheet() {
+  return (
+    <>
+      <SheetHeader title={t('Android-App')} />
+      <div class="sheet-body">
+        <p class="apk-lead">
+          {t('Meridian gibt es auch als App für Android-Handys. Sie zeigt dasselbe wie diese Website, aber im Vollbild und mit eigenem Symbol. Neue Versionen kommen automatisch.')}
+        </p>
+        <ol class="apk-steps">
+          <li>{t('«APK herunterladen» antippen und die Datei öffnen.')}</li>
+          <li>{t('Fragt Android nach, die Installation aus dieser Quelle erlauben.')}</li>
+          <li>{t('«Installieren» antippen. Warnungen vor unbekannten Apps sind ausserhalb des Play Store normal.')}</li>
+        </ol>
+        <div class="sheet-actions">
+          <a class="btn primary press" href={APK_URL} rel="noreferrer">
+            <Icon name="download" />
+            {t('APK herunterladen')}
+          </a>
+        </div>
+        <p class="hint" style={{ textAlign: 'center', margin: '10px 22px 0' }}>
+          {t('Für Android 8 und neuer · 0,4 MB')}
+        </p>
+        <p class="hint" style={{ margin: '16px 22px 0' }}>
+          {t('Was du am Handy in Chrome eingetragen hast, ist in der App gleich dabei. Mit Konto auch alles von deinen anderen Geräten.')}
         </p>
       </div>
     </>

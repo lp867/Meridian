@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Hintergrund der App (dunkles Design) für Status-, Navigationsleiste und Startbild -->
+    <color name="bar">#08090C</color>
+</resources>

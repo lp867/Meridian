@@ -12,6 +12,7 @@ const P: Record<string, string> = {
   search: '<circle cx="11" cy="11" r="7.5"/><path d="m20.5 20.5-4.2-4.2"/>',
   plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
   minus: '<path d="M5 12h14"/>',
+  phone: '<rect x="6.5" y="2.5" width="11" height="19" rx="2.6"/><path d="M10.5 18.2h3"/>',
   chevR: '<path d="m9 18 6-6-6-6"/>',
   chevL: '<path d="m15 18-6-6 6-6"/>',
   chevD: '<path d="m6 9 6 6 6-6"/>',

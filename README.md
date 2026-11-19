@@ -25,6 +25,10 @@ jederzeit löschen.
 
 Seite in Chrome (Android) öffnen → Menü → «Zum Startbildschirm hinzufügen» bzw. «App installieren».
 
+Für Android gibt es zusätzlich eine APK (Profil → Über → Android-App, oder direkt
+[Meridian.apk](https://github.com/lp867/Meridian/releases/latest/download/Meridian.apk)). Bauen und
+veröffentlichen: siehe [android/README.md](android/README.md).
+
 ## Entwicklung
 
 ```bash

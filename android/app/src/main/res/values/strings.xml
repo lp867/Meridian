@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Meridian</string>
+    <!-- ?app=android: die Website blendet in der App den APK-Download aus -->
+    <string name="launch_url" translatable="false">https://lp867.github.io/Meridian/?app=android</string>
+    <string name="provider_authority" translatable="false">io.github.lp867.meridian.fileprovider</string>
+    <string name="asset_statements" translatable="false">
+        [{
+            \"relation\": [\"delegate_permission/common.handle_all_urls\"],
+            \"target\": {\"namespace\": \"web\", \"site\": \"https://lp867.github.io\"}
+        }]
+    </string>
+</resources>

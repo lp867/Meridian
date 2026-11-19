@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Meridian für Android: eine Trusted Web Activity. Die App öffnet https://lp867.github.io/Meridian/
+  in Chrome, aber im Vollbild ohne Adressleiste. Inhalt und Updates kommen immer von der Website.
+  Vollbild klappt nur, wenn https://lp867.github.io/.well-known/assetlinks.json den Fingerabdruck
+  des Signaturschlüssels enthält (Repo lp867/lp867.github.io).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:manageSpaceActivity="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Translucent.NoTitleBar">
+
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/asset_statements" />
+
+        <activity
+            android:name=".LauncherActivity"
+            android:alwaysRetainTaskState="true"
+            android:exported="true"
+            android:label="@string/app_name">
+
+            <meta-data
+                android:name="android.support.customtabs.trusted.DEFAULT_URL"
+                android:value="@string/launch_url" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR"
+                android:resource="@color/bar" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.STATUS_BAR_COLOR_DARK"
+                android:resource="@color/bar" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR"
+                android:resource="@color/bar" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.NAVIGATION_BAR_COLOR_DARK"
+                android:resource="@color/bar" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.SPLASH_IMAGE_DRAWABLE"
+                android:resource="@drawable/splash" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.SPLASH_SCREEN_BACKGROUND_COLOR"
+                android:resource="@color/bar" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.SPLASH_SCREEN_FADE_OUT_DURATION"
+                android:value="300" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.FILE_PROVIDER_AUTHORITY"
+                android:value="@string/provider_authority" />
+            <meta-data
+                android:name="android.support.customtabs.trusted.SCREEN_ORIENTATION"
+                android:value="portrait" />
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Links auf Meridian (z. B. aus einer Mail) direkt in der App öffnen -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="lp867.github.io"
+                    android:pathPrefix="/Meridian" />
+            </intent-filter>
+        </activity>
+
+        <!-- «Website-Einstellungen» (langes Drücken aufs Symbol, Speicher verwalten); die Bibliothek setzt sie voraus -->
+        <activity android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity">
+            <meta-data
+                android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL"
+                android:value="@string/launch_url" />
+        </activity>
+
+        <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
+
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
+            android:configChanges="orientation|screenSize" />
+
+        <!-- Gibt Chrome das Startbild weiter -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="@string/provider_authority"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/filepaths" />
+        </provider>
+
+        <!--
+          Bewusst kein DelegationService für den Standort: Ab Android 15 blockiert das System dessen
+          Berechtigungsfenster (Start aus dem Hintergrund). Ohne ihn fragt Chrome selbst, wie auf der Website.
+        -->
+    </application>
+</manifest>
