@@ -222,7 +222,7 @@ export function AuthPanel({ onSuccess }: { onSuccess: () => void }) {
                   autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
                   enterKeyHint="go"
                   value={pw}
-                  placeholder={mode === 'signup' ? t('mindestens 6 Zeichen') : ''}
+                  placeholder={mode === 'signup' ? t('mindestens 8 Zeichen') : ''}
                   onInput={(e) => setPw((e.currentTarget as HTMLInputElement).value)}
                 />
                 <button type="button" class="pw-toggle" onClick={() => setShow(!show)} aria-label={show ? t('Passwort verbergen') : t('Passwort zeigen')}>
@@ -231,7 +231,7 @@ export function AuthPanel({ onSuccess }: { onSuccess: () => void }) {
               </div>
             </label>
             {messages}
-            <button type="submit" class="btn primary block press auth-submit" disabled={!!busy || pw.length < 6}>
+            <button type="submit" class="btn primary block press auth-submit" disabled={!!busy || pw.length < (mode === 'signup' ? 8 : 6)}>
               {busy === 'mail' ? t('Einen Moment …') : mode === 'signup' ? t('Konto erstellen') : t('Anmelden')}
             </button>
             <div class="auth-links">

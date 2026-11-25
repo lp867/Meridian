@@ -3,7 +3,21 @@ import type { AirportInfo, AppData, Flight, FvTrip } from './types';
 import { cityRowNames, loadAirports, loadCities } from './geo';
 import { updateData, dataStore } from './store';
 import { t } from './i18n';
-import { sanitizeData } from './sanitize';
+import { cleanFlight, cleanFvTrip, sanitizeData } from './sanitize';
+
+/**
+ * Liest eine gewählte Datei erst nach Prüfung ein: passende Endung oder passender Typ,
+ * nicht zu gross, und wirklich Text (keine Binärdatei, die nur umbenannt wurde).
+ */
+export async function readTextFile(file: File, kind: 'csv' | 'json', maxMb: number): Promise<string> {
+  const types = kind === 'csv' ? ['text/csv', 'application/vnd.ms-excel', 'text/comma-separated-values'] : ['application/json'];
+  const name = file.name.toLowerCase();
+  if (!name.endsWith(`.${kind}`) && !types.includes(file.type)) throw new Error(t('Falscher Dateityp: {f}', { f: file.name }));
+  if (file.size > maxMb * 1024 * 1024) throw new Error(t('Datei zu gross: {f} (höchstens {n} MB)', { f: file.name, n: maxMb }));
+  const text = await file.text();
+  if (text.slice(0, 4096).includes('\u0000')) throw new Error(t('Falscher Dateityp: {f}', { f: file.name }));
+  return text;
+}
 
 /** Ältere Daten: fehlende mehrsprachige Stadtnamen der Flughäfen nachtragen. */
 export async function migrateAirports() {
@@ -131,11 +145,14 @@ export async function importFlightVault(files: File[]): Promise<ImportReport> {
   const flights = new Map(data.flights.map((f) => [f.id, f]));
   const trips = new Map(data.fvTrips.map((t) => [t.id, t]));
 
-  for (const file of files) {
-    const { rows, fields } = parseCsv(await file.text());
+  // Erst alle Dateien prüfen, dann einlesen: eine falsche Datei bricht den Import ab, bevor etwas geändert wird
+  const texts = await Promise.all(files.slice(0, 10).map((f) => readTextFile(f, 'csv', 20)));
+  for (const [i, file] of files.slice(0, 10).entries()) {
+    const { rows, fields } = parseCsv(texts[i]);
     if (fields.includes('departureAirportCode')) {
       for (const r of rows) {
-        const f = toFlight(r);
+        // Gleiche Prüfung wie bei Sicherungen: Flughafen-Codes, Zahlen, Längen
+        const f = cleanFlight(toFlight(r));
         if (!f) continue;
         if (flights.has(f.id)) report.flightsUpdated++;
         else report.flightsNew++;
@@ -143,7 +160,7 @@ export async function importFlightVault(files: File[]): Promise<ImportReport> {
       }
     } else if (fields.includes('startDate') && fields.includes('name')) {
       for (const r of rows) {
-        const t = toTrip(r);
+        const t = cleanFvTrip(toTrip(r));
         if (!t) continue;
         if (trips.has(t.id)) report.tripsUpdated++;
         else report.tripsNew++;
@@ -153,6 +170,7 @@ export async function importFlightVault(files: File[]): Promise<ImportReport> {
       report.skipped.push(file.name);
     }
   }
+  report.skipped.push(...files.slice(10).map((f) => f.name));
 
   const next: AppData = {
     ...data,

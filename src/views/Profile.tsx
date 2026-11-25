@@ -1,7 +1,7 @@
 import { useRef, useState } from 'preact/hooks';
 import type { ComponentChildren } from 'preact';
 import { emptyData, metaStore, replaceData, updateData, updateMeta, useData, useMeta } from '../lib/store';
-import { backupJson, downloadFile, parseBackup, toCsv } from '../lib/importFv';
+import { backupJson, downloadFile, parseBackup, readTextFile, toCsv } from '../lib/importFv';
 import { cityName, useDerived } from '../lib/derive';
 import { countriesSorted, countryName } from '../lib/geo';
 import { flag, fmtAgo, fmtInt, normalize, todayYmd } from '../lib/format';
@@ -48,7 +48,7 @@ export function ProfileScreen() {
     const file = files?.[0];
     if (!file) return;
     try {
-      const backup = parseBackup(await file.text());
+      const backup = parseBackup(await readTextFile(file, 'json', 50));
       const ok = await confirmSheet({
         title: t('Sicherung einspielen?'),
         text: t('{f}, {c}. Die Daten auf diesem Gerät werden ersetzt.', { f: tn(backup.flights.length, 'Flug', 'Flüge'), c: tn(backup.cities.length, 'Stadt', 'Städte') }),

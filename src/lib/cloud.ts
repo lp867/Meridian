@@ -115,7 +115,8 @@ export function authErrorText(e: unknown): string {
       return t('Ungültige E-Mail-Adresse');
     case 'auth/missing-password':
     case 'auth/weak-password':
-      return t('Das Passwort braucht mindestens 6 Zeichen');
+    case 'auth/password-does-not-meet-requirements':
+      return t('Das Passwort braucht mindestens 8 Zeichen');
     case 'auth/email-already-in-use':
       return t('Für diese E-Mail gibt es schon ein Konto. Melde dich an.');
     case 'auth/invalid-credential':
@@ -139,6 +140,8 @@ export function authErrorText(e: unknown): string {
 const silent = (e: unknown) => ['auth/popup-closed-by-user', 'auth/cancelled-popup-request', 'auth/user-cancelled'].includes((e as { code?: string })?.code ?? '');
 
 export async function signUp(email: string, password: string) {
+  // Neue Konten: mindestens 8 Zeichen (ältere Konten mit 6 Zeichen können sich weiter anmelden)
+  if (password.length < 8) throw Object.assign(new Error('weak'), { code: 'auth/weak-password' });
   const { authM, auth } = await load();
   auth.languageCode = getLang();
   await authM.createUserWithEmailAndPassword(auth, email.trim(), password);

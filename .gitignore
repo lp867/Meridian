@@ -22,3 +22,10 @@ android/keystore.properties
 android/*.jks
 *.apk
 *.aab
+
+# Umgebungsvariablen und Zugangsdaten nie einchecken
+.env
+.env.*
+!.env.example
+*.pem
+*.p12

@@ -26,7 +26,7 @@ function validTz(tz: string) {
 const names4 = (v: unknown) => (Array.isArray(v) && v.length === 4 && v.every((x) => typeof x === 'string') ? (v as string[]).map((x) => x.slice(0, 200)) : undefined);
 const countries = (v: unknown) => arr(v).filter((c): c is string => typeof c === 'string' && CC.test(c)).slice(0, 300);
 
-function flight(f: unknown): Flight | null {
+export function cleanFlight(f: unknown): Flight | null {
   if (!isObj(f)) return null;
   const id = str(f.id, 200);
   const dep = str(f.dep, 4);
@@ -56,7 +56,7 @@ function flight(f: unknown): Flight | null {
   };
 }
 
-function fvTrip(t: unknown): FvTrip | null {
+export function cleanFvTrip(t: unknown): FvTrip | null {
   if (!isObj(t)) return null;
   const id = str(t.id, 200);
   const name = str(t.name, 200);
@@ -168,8 +168,8 @@ export function sanitizeData(raw: unknown): AppData {
 
   return {
     version: 1,
-    flights: keep(raw.flights, flight),
-    fvTrips: keep(raw.fvTrips, fvTrip),
+    flights: keep(raw.flights, cleanFlight),
+    fvTrips: keep(raw.fvTrips, cleanFvTrip),
     airports,
     countries: marks,
     cities: keep(raw.cities, city),
